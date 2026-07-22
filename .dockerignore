@@ -1,0 +1,19 @@
+# 依赖目录（禁止打入镜像，由镜像内安装）
+node_modules
+**/node_modules
+
+# Git 仓库元数据
+.git
+.gitignore
+
+# 环境变量文件（禁止打入镜像，防止密钥泄漏）
+.env
+.env.*
+
+# Next.js 构建产物（由镜像内构建生成，避免污染缓存层）
+.next
+
+# Markdown 文档（保留 PROJECT.md / SPEC.md）
+*.md
+!PROJECT.md
+!SPEC.md

@@ -1,0 +1,108 @@
+# =============================================================================
+# 网络验证 SaaS 系统 - Docker Compose 编排
+# 所有密码 / 端口均通过 .env 文件注入，不在本文件中硬编码
+# =============================================================================
+
+services:
+  # ---------- Next.js 应用 ----------
+  app:
+    image: ${APP_IMAGE:-ghcr.io/laobi465/jicek-wlyz:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jicek-wlyz-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    environment:
+      NODE_ENV: production
+      PORT: ${APP_PORT}
+      HOSTNAME: 0.0.0.0
+      # 容器内部通过服务名访问 db / redis，使用容器内部默认端口
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/${DB_NAME:-jicek_wlyz}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      AUTH_SECRET: ${AUTH_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${APP_PORT}/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - jicek-net
+
+  # ---------- PostgreSQL 16 ----------
+  db:
+    image: postgres:16-alpine
+    container_name: jicek-wlyz-db
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT}:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-jicek_wlyz}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${DB_NAME:-jicek_wlyz}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - jicek-net
+
+  # ---------- Redis 7 ----------
+  redis:
+    image: redis:7-alpine
+    container_name: jicek-wlyz-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - jicek-net
+
+  # ---------- APK 注入工作容器（独立容器，供 docker exec 调用）----------
+  apk-injector:
+    image: openjdk:11-jdk
+    container_name: jicek-wlyz-apk-injector
+    restart: unless-stopped
+    working_dir: /workspace
+    volumes:
+      - apk-work:/workspace
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        apt-get update
+        apt-get install -y --no-install-recommends wget ca-certificates
+        wget -q -O /usr/local/bin/apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
+        printf '#!/bin/sh\nexec java -jar /usr/local/bin/apktool.jar "$$@"\n' > /usr/local/bin/apktool
+        chmod +x /usr/local/bin/apktool
+        echo "apktool 已就绪，容器保持运行以供 docker exec 调用"
+        tail -f /dev/null
+    networks:
+      - jicek-net
+
+networks:
+  jicek-net:
+    driver: bridge
+
+volumes:
+  db-data:
+  redis-data:
+  apk-work:

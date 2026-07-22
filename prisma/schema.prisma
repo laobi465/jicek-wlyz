@@ -1,0 +1,786 @@
+// ===========================================================================
+// jicek-wlyz Prisma Schema
+// 网络验证 SaaS 系统 - 数据库模型定义
+// ===========================================================================
+// 严格遵循 SPEC.md §2.2 架构规范与 §2.3 接口规范
+// 命名规范：snake_case 表名 + 字段名（PostgreSQL 惯例），模型名 PascalCase
+// ===========================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// 1. 用户与权限模块
+// ===========================================================================
+
+/// 用户表（三角色：super_admin / agent / developer）
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password_hash String   @map("password_hash")
+  nickname      String?
+  phone         String?  // 加密存储
+  real_name     String?  @map("real_name") // 加密存储
+  avatar        String?
+
+  /// 角色：super_admin 超管 / agent 代理 / developer 开发者
+  role          String   @default("developer") // super_admin | agent | developer
+
+  /// 代理层级（仅 agent 角色有效）：1=一级代理 2=二级代理 3=三级代理
+  agent_level   Int?     @map("agent_level")
+
+  /// 上级代理 ID（用于 3 层分销关系）
+  parent_agent_id String? @map("parent_agent_id")
+
+  /// 2FA 密钥（TOTP，超管和代理强制开启）
+  two_factor_secret String? @map("two_factor_secret")
+  two_factor_enabled Boolean @default(false) @map("two_factor_enabled")
+
+  /// 状态：active 正常 / banned 封禁 / pending 待审核
+  status        String   @default("active") // active | banned | pending
+
+  /// 余额（代理佣金余额 / 开发者充值余额）
+  balance       Decimal  @default(0) @db.Decimal(10, 2)
+
+  /// 超管 IP 白名单（JSON 数组）
+  ip_whitelist  String?  @map("ip_whitelist") // JSON: ["1.2.3.4"]
+
+  created_at    DateTime @default(now()) @map("created_at")
+  updated_at    DateTime @updatedAt @map("updated_at")
+  last_login_at DateTime? @map("last_login_at")
+
+  // 关系
+  apps              App[]
+  card_keys         CardKey[]      @relation("CardIssuer")
+  card_keys_used    CardKey[]      @relation("CardUser")
+  devices           Device[]
+  agent_profile     Agent?
+  invitation_codes_generated InvitationCode[] @relation("CodeGenerator")
+  invitation_codes_used      InvitationCode?  @relation("CodeUser")
+  shops             Shop[]
+  orders            Order[]        @relation("OrderBuyer")
+  packages          UserPackage[]
+  payments          Payment[]
+  tickets           Ticket[]       @relation("TicketSubmitter")
+  ticket_replies    TicketReply[]
+  update_histories  UpdateHistory[]
+  audit_logs        AuditLog[]
+  sessions          Session[]
+  accounts          Account[]
+
+  @@map("users")
+}
+
+/// 会话表（Better Auth）
+model Session {
+  id           String   @id @default(cuid())
+  user_id      String   @map("user_id")
+  token        String   @unique
+  expires_at   DateTime @map("expires_at")
+  ip_address   String?  @map("ip_address")
+  user_agent   String?  @map("user_agent")
+  created_at   DateTime @default(now()) @map("created_at")
+  updated_at   DateTime @updatedAt @map("updated_at")
+
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([token])
+  @@map("sessions")
+}
+
+/// 第三方账号关联（Better Auth）
+model Account {
+  id                String   @id @default(cuid())
+  user_id           String   @map("user_id")
+  provider          String
+  provider_account_id String @map("provider_account_id")
+  access_token      String?  @map("access_token")
+  refresh_token     String?  @map("refresh_token")
+  expires_at        Int?     @map("expires_at")
+  created_at        DateTime @default(now()) @map("created_at")
+  updated_at        DateTime @updatedAt @map("updated_at")
+
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("accounts")
+}
+
+// ===========================================================================
+// 2. 应用与验证模块
+// ===========================================================================
+
+/// 应用表（开发者创建）
+model App {
+  id              String   @id @default(cuid())
+  developer_id    String   @map("developer_id")
+  name            String
+  description     String?
+
+  /// AppKey（公钥，用于 SDK 识别应用）
+  app_key         String   @unique @map("app_key")
+
+  /// 客户端密钥（用于签名验证，加密存储）
+  client_secret   String   @map("client_secret")
+
+  /// RSA 密钥对（PEM 格式，私钥加密存储）
+  rsa_public_key  String   @map("rsa_public_key")
+  rsa_private_key String   @map("rsa_private_key") // AES 加密存储
+
+  /// 应用状态：active 正常 / disabled 停用
+  status          String   @default("active") // active | disabled
+
+  /// 当前版本号
+  version         String   @default("1.0.0")
+
+  /// 公告内容
+  announcement    String?
+
+  /// 强制更新配置
+  force_update    Boolean  @default(false) @map("force_update")
+  min_version     String?  @map("min_version")
+  update_url      String?  @map("update_url")
+
+  /// 心跳间隔（秒）
+  heartbeat_interval Int   @default(60) @map("heartbeat_interval")
+
+  /// 设备策略：最大绑定设备数（1~10000）
+  max_devices     Int      @default(1) @map("max_devices")
+
+  /// 解绑规则：none 不允许 / daily 每日 / manual 手动
+  unbind_rule     String   @default("none") // none | daily | manual
+
+  /// 通信加密模式：rsa_aes / ecdhe_aes
+  crypto_mode     String   @default("rsa_aes") @map("crypto_mode")
+
+  /// 配置签名（服务端私钥签名，SDK 校验防篡改）
+  config_signature String? @map("config_signature")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  developer       User     @relation(fields: [developer_id], references: [id], onDelete: Cascade)
+  card_keys       CardKey[]
+  devices         Device[]
+  cloud_variables CloudVariable[]
+  card_templates  CardTemplate[]
+
+  @@index([developer_id])
+  @@index([app_key])
+  @@map("apps")
+}
+
+/// 设备表（机器码绑定 + 心跳保活）
+model Device {
+  id              String   @id @default(cuid())
+  app_id          String   @map("app_id")
+  user_id         String?  @map("user_id") // 绑定的用户 ID（开发者）
+  card_key_id     String?  @map("card_key_id") // 绑定的卡密 ID
+
+  /// 机器码（CPU ID + IMEI + Android ID + MAC 组合哈希）
+  machine_code    String   @map("machine_code")
+
+  /// 设备名称
+  device_name     String?
+
+  /// IP 地址
+  ip_address      String?  @map("ip_address")
+
+  /// 地理位置（IP 解析）
+  location        String?
+
+  /// 状态：online 在线 / offline 离线 / blacklisted 黑名单
+  status          String   @default("offline") // online | offline | blacklisted
+
+  /// 心跳最后更新时间
+  last_heartbeat  DateTime? @map("last_heartbeat")
+
+  /// 设备序列号（防重放，递增）
+  sequence        Int      @default(0)
+
+  /// 临时封禁到期时间
+  banned_until    DateTime? @map("banned_until")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  app             App      @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  user            User?    @relation(fields: [user_id], references: [id])
+  card_key        CardKey? @relation(fields: [card_key_id], references: [id])
+
+  @@unique([app_id, machine_code])
+  @@index([app_id])
+  @@index([card_key_id])
+  @@map("devices")
+}
+
+// ===========================================================================
+// 3. 卡密模块
+// ===========================================================================
+
+/// 卡密模板（开发者定义卡密规格）
+model CardTemplate {
+  id              String   @id @default(cuid())
+  app_id          String   @map("app_id")
+
+  name            String
+  description     String?
+
+  /// 卡密类型：day 天卡 / week 周卡 / month 月卡 / year 年卡 / permanent 永久 / count 次数 / custom_hour 自定义小时
+  type            String   // day | week | month | year | permanent | count | custom_hour
+
+  /// 持续时长（custom_hour 类型时为小时数，可为小数如 0.1）
+  duration_hours  Int?     @map("duration_hours")
+
+  /// 次数卡使用次数（count 类型）
+  max_count       Int?     @map("max_count")
+
+  /// 次数卡时间上限（秒，防永久使用）
+  count_time_limit Int?    @map("count_time_limit")
+
+  /// 日转绑次数限制（默认 1）
+  daily_transfer_limit Int @default(1) @map("daily_transfer_limit")
+
+  /// 共享检测阈值（24 小时内不同设备数）
+  share_detect_threshold Int @default(2) @map("share_detect_threshold")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  app             App      @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  card_keys       CardKey[]
+
+  @@index([app_id])
+  @@map("card_templates")
+}
+
+/// 卡密表
+model CardKey {
+  id              String   @id @default(cuid())
+  app_id          String   @map("app_id")
+  template_id     String?  @map("template_id")
+  issuer_id       String   @map("issuer_id") // 生成者（开发者/代理）
+  user_id         String?  @map("user_id") // 使用者
+
+  /// 卡密明文（格式 XXXX-XXXX-XXXX-XXXX）
+  code            String   @unique
+
+  /// CRC32 校验位（卡密最后 4 位）
+  crc32_checksum  String   @map("crc32_checksum")
+
+  /// RSA 签名（平台私钥签名，SDK 校验）
+  rsa_signature   String   @map("rsa_signature")
+
+  /// 开发者 ID 水印（AES 加密，泄露追溯）
+  developer_watermark String @map("developer_watermark")
+
+  /// 状态：unused 未使用 / active 已激活 / expired 已过期 / disabled 已作废 / blacklisted 黑名单
+  status          String   @default("unused") // unused | active | expired | disabled | blacklisted
+
+  /// 激活时间
+  activated_at    DateTime? @map("activated_at")
+
+  /// 到期时间
+  expires_at      DateTime? @map("expires_at")
+
+  /// 剩余次数（次数卡）
+  remaining_count Int?     @map("remaining_count")
+
+  /// 当日转绑次数
+  daily_transfer_count Int  @default(0) @map("daily_transfer_count")
+  daily_transfer_reset_at DateTime? @map("daily_transfer_reset_at")
+
+  /// 作废标记（远程失效）
+  revoked         Boolean  @default(false)
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  app             App            @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  template        CardTemplate?  @relation(fields: [template_id], references: [id])
+  issuer          User           @relation("CardIssuer", fields: [issuer_id], references: [id])
+  user            User?          @relation("CardUser", fields: [user_id], references: [id])
+  devices         Device[]
+
+  @@index([app_id])
+  @@index([code])
+  @@index([status])
+  @@map("card_keys")
+}
+
+// ===========================================================================
+// 4. 云变量模块
+// ===========================================================================
+
+/// 云变量表（每应用独立 KV 配置池）
+model CloudVariable {
+  id              String   @id @default(cuid())
+  app_id          String   @map("app_id")
+
+  key             String
+  value           String   @db.Text
+
+  /// 值类型：string / number / boolean / json
+  value_type      String   @default("string") @map("value_type")
+
+  /// 配置签名（防篡改）
+  signature       String?
+
+  /// 是否对客户端可见
+  is_public       Boolean  @default(false) @map("is_public")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  app             App      @relation(fields: [app_id], references: [id], onDelete: Cascade)
+
+  @@unique([app_id, key])
+  @@index([app_id])
+  @@map("cloud_variables")
+}
+
+// ===========================================================================
+// 5. 代理分销模块
+// ===========================================================================
+
+/// 代理档案表（扩展 User 表）
+model Agent {
+  id              String   @id @default(cuid())
+  user_id         String   @unique @map("user_id")
+
+  /// 代理层级：1 / 2 / 3
+  level           Int
+
+  /// 上级代理 ID
+  parent_id       String?  @map("parent_id")
+
+  /// 佣金比例（百分比，由开发者自定义）
+  commission_rate Decimal  @default(0) @db.Decimal(5, 2) @map("commission_rate")
+
+  /// 累计佣金
+  total_commission Decimal  @default(0) @db.Decimal(10, 2) @map("total_commission")
+
+  /// 已提现金额
+  withdrawn_amount Decimal  @default(0) @db.Decimal(10, 2) @map("withdrawn_amount")
+
+  /// 状态：active 正常 / pending 待审核 / frozen 冻结
+  status          String   @default("pending") // active | pending | frozen
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_id])
+  @@index([level])
+  @@map("agents")
+}
+
+/// 邀请码表
+model InvitationCode {
+  id              String   @id @default(cuid())
+  code            String   @unique
+
+  /// 生成者 ID（开发者或上级代理）
+  generator_id    String   @map("generator_id")
+
+  /// 使用者 ID
+  user_id         String?  @unique @map("user_id")
+
+  /// 类型：developer 邀请开发者 / agent 邀请代理
+  type            String   // developer | agent
+
+  /// 代理层级（type=agent 时有效）
+  target_level    Int?     @map("target_level")
+
+  /// 使用模式：once 一次性 / reusable 可复用 / limited 限量
+  usage_mode      String   @default("once") // once | reusable | limited
+
+  /// 限量使用次数（usage_mode=limited 时有效）
+  max_uses        Int?     @map("max_uses")
+  used_count      Int      @default(0) @map("used_count")
+
+  /// 有效期
+  expires_at      DateTime? @map("expires_at")
+
+  /// 绑定关系：invitee 邀请对象
+  bound_to        String?  @map("bound_to")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  used_at         DateTime? @map("used_at")
+
+  // 关系
+  generator       User     @relation("CodeGenerator", fields: [generator_id], references: [id])
+  user            User?    @relation("CodeUser", fields: [user_id], references: [id])
+
+  @@index([code])
+  @@index([generator_id])
+  @@map("invitation_codes")
+}
+
+// ===========================================================================
+// 6. 发卡业务模块
+// ===========================================================================
+
+/// 店铺表
+model Shop {
+  id              String   @id @default(cuid())
+  developer_id    String   @map("developer_id")
+  name            String
+  description     String?
+
+  /// 店铺状态：open 营业 / closed 关闭
+  status          String   @default("open") // open | closed
+
+  /// 店铺域名/URL
+  url             String?
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  developer       User     @relation(fields: [developer_id], references: [id], onDelete: Cascade)
+  products        Product[]
+
+  @@index([developer_id])
+  @@map("shops")
+}
+
+/// 商品表
+model Product {
+  id              String   @id @default(cuid())
+  shop_id         String   @map("shop_id")
+  card_template_id String? @map("card_template_id")
+
+  name            String
+  description     String?
+
+  /// 价格
+  price           Decimal  @db.Decimal(10, 2)
+
+  /// 库存（-1 表示无限）
+  stock           Int      @default(-1)
+
+  /// 状态：on_sale 在售 / off_shelf 下架
+  status          String   @default("on_sale") // on_sale | off_shelf
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+  orders          Order[]
+
+  @@index([shop_id])
+  @@map("products")
+}
+
+/// 订单表
+model Order {
+  id              String   @id @default(cuid())
+  order_no        String   @unique @map("order_no")
+  buyer_id        String   @map("buyer_id")
+  product_id      String   @map("product_id")
+
+  /// 金额
+  amount          Decimal  @db.Decimal(10, 2)
+
+  /// 状态：pending 待支付 / paid 已支付 / failed 失败 / refunded 已退款
+  status          String   @default("pending") // pending | paid | failed | refunded
+
+  /// 支付方式
+  payment_method  String?  @map("payment_method")
+
+  /// 关联卡密 ID（购买后分配）
+  card_key_id     String?  @map("card_key_id")
+
+  /// 代理佣金分账记录（JSON: [{level:1,agent_id,amount}, ...]）
+  commission_split String? @map("commission_split") // JSON
+
+  created_at      DateTime @default(now()) @map("created_at")
+  paid_at         DateTime? @map("paid_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  buyer           User     @relation("OrderBuyer", fields: [buyer_id], references: [id])
+  product         Product  @relation(fields: [product_id], references: [id])
+
+  @@index([order_no])
+  @@index([buyer_id])
+  @@index([status])
+  @@map("orders")
+}
+
+// ===========================================================================
+// 7. 套餐与支付模块
+// ===========================================================================
+
+/// 套餐表（管理员后台自定义定价）
+model Package {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+
+  /// 价格（月费）
+  price           Decimal  @db.Decimal(10, 2)
+
+  /// 应用数额度
+  app_quota       Int      @map("app_quota")
+
+  /// 卡密额度（1:1 对应应用数）
+  card_quota      Int      @map("card_quota")
+
+  /// 状态：active 启用 / disabled 停用
+  status          String   @default("active") // active | disabled
+
+  /// 排序权重
+  sort_order      Int      @default(0) @map("sort_order")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  user_packages   UserPackage[]
+
+  @@map("packages")
+}
+
+/// 用户套餐关联表
+model UserPackage {
+  id              String   @id @default(cuid())
+  user_id         String   @map("user_id")
+  package_id      String   @map("package_id")
+
+  /// 剩余应用数
+  remaining_app_quota Int  @default(0) @map("remaining_app_quota")
+
+  /// 剩余卡密额度
+  remaining_card_quota Int @default(0) @map("remaining_card_quota")
+
+  /// 状态：active 有效 / expired 过期
+  status          String   @default("active") // active | expired
+
+  /// 到期时间
+  expires_at      DateTime @map("expires_at")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  package         Package  @relation(fields: [package_id], references: [id])
+
+  @@index([user_id])
+  @@index([status])
+  @@map("user_packages")
+}
+
+/// 支付记录表
+model Payment {
+  id              String   @id @default(cuid())
+  user_id         String   @map("user_id")
+  order_id        String?  @map("order_id")
+
+  /// 支付金额
+  amount          Decimal  @db.Decimal(10, 2)
+
+  /// 支付方式：epay 彩虹易支付
+  method          String   @default("epay") // epay
+
+  /// 状态：pending 待支付 / success 成功 / failed 失败
+  status          String   @default("pending") // pending | success | failed
+
+  /// 第三方交易号
+  trade_no        String?  @map("trade_no")
+
+  /// 支付回调原始数据
+  callback_data   String?  @map("callback_data") @db.Text
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  user            User     @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([status])
+  @@map("payments")
+}
+
+// ===========================================================================
+// 8. 工单系统模块
+// ===========================================================================
+
+/// 工单表
+model Ticket {
+  id              String   @id @default(cuid())
+  ticket_no       String   @unique @map("ticket_no")
+  submitter_id    String   @map("submitter_id")
+
+  title           String
+  content         String   @db.Text
+
+  /// 优先级：low 低 / medium 中 / high 高 / urgent 紧急
+  priority        String   @default("medium") // low | medium | high | urgent
+
+  /// 状态：open 待处理 / in_progress 处理中 / resolved 已解决 / closed 已关闭
+  status          String   @default("open") // open | in_progress | resolved | closed
+
+  /// 工单类型：bug 缺陷 / feature 需求 / billing 计费 / other 其他
+  category        String   @default("other") // bug | feature | billing | other
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+  closed_at       DateTime? @map("closed_at")
+
+  // 关系
+  submitter       User     @relation("TicketSubmitter", fields: [submitter_id], references: [id])
+  replies         TicketReply[]
+
+  @@index([submitter_id])
+  @@index([status])
+  @@map("tickets")
+}
+
+/// 工单回复表
+model TicketReply {
+  id              String   @id @default(cuid())
+  ticket_id       String   @map("ticket_id")
+  user_id         String   @map("user_id")
+
+  content         String   @db.Text
+
+  /// 是否为客服回复
+  is_staff        Boolean  @default(false) @map("is_staff")
+
+  created_at      DateTime @default(now()) @map("created_at")
+
+  // 关系
+  ticket          Ticket   @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [user_id], references: [id])
+
+  @@index([ticket_id])
+  @@map("ticket_replies")
+}
+
+// ===========================================================================
+// 9. GitHub 自动更新模块（/bdeploy）
+// ===========================================================================
+
+/// 更新历史表
+model UpdateHistory {
+  id              String   @id @default(cuid())
+
+  /// 版本号（commit hash）
+  version         String
+
+  /// 操作类型：auto 自动更新 / manual 手动触发 / rollback 回滚
+  action          String   // auto | manual | rollback
+
+  /// 状态：running 执行中 / success 成功 / failed 失败 / rolled_back 已回滚
+  status          String   // running | success | failed | rolled_back
+
+  /// 触发方式：webhook / manual / rollback
+  trigger         String   // webhook | manual | rollback
+
+  /// 操作人 ID（自动更新时为 system）
+  operator        String
+
+  /// 错误信息
+  error_message   String?  @map("error_message") @db.Text
+
+  /// 更新日志
+  changelog       String?  @db.Text
+
+  /// 回滚前版本（回滚操作时有效）
+  previous_version String? @map("previous_version")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  completed_at    DateTime? @map("completed_at")
+
+  // 关系
+  operator_user   User?    @relation(fields: [operator], references: [id])
+
+  @@index([version])
+  @@index([status])
+  @@map("update_histories")
+}
+
+// ===========================================================================
+// 10. 审计日志与系统配置模块
+// ===========================================================================
+
+/// 审计日志表（全量操作记录）
+model AuditLog {
+  id              String   @id @default(cuid())
+  user_id         String?  @map("user_id")
+
+  /// 操作类型
+  action          String   // card_generate | card_revoke | agent_approve | config_update | update_trigger | ...
+
+  /// 目标资源类型
+  target_type     String   @map("target_type")
+
+  /// 目标资源 ID
+  target_id       String?  @map("target_id")
+
+  /// 操作详情（JSON）
+  details         String?  @db.Text
+
+  /// IP 地址
+  ip_address      String?  @map("ip_address")
+
+  /// User-Agent
+  user_agent      String?  @map("user_agent")
+
+  /// 是否异常（用于告警）
+  is_abnormal     Boolean  @default(false) @map("is_abnormal")
+
+  created_at      DateTime @default(now()) @map("created_at")
+
+  // 关系
+  user            User?    @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([action])
+  @@index([created_at])
+  @@map("audit_logs")
+}
+
+/// 系统配置表（管理员后台动态配置，键值对存储）
+model SystemConfig {
+  id              String   @id @default(cuid())
+
+  /// 配置键
+  key             String   @unique
+
+  /// 配置值（JSON 格式，支持复杂结构）
+  value           String   @db.Text
+
+  /// 配置分组：payment 支付 / storage 对象存储 / email 邮件 / sms 短信 / cdn Cloudflare / backup 备份 / general 通用
+  group           String   @default("general") // payment | storage | email | sms | cdn | backup | general
+
+  /// 描述
+  description     String?
+
+  /// 是否加密存储
+  encrypted       Boolean  @default(false)
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  @@index([group])
+  @@map("system_configs")
+}
