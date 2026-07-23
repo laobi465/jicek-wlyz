@@ -284,10 +284,14 @@ prepare_image() {
     step "7" "准备应用镜像..."
     cd "${DEPLOY_DIR}"
 
+    # migrate 镜像不在 registry，必须本地构建，需要 Dockerfile + 源码在场
+    # 无论远程拉取还是本地构建，都先确保源码就绪
+    prepare_local_build_source
+
     if docker compose pull app 2>/dev/null; then
         info "远程 app 镜像拉取成功"
         docker compose pull db redis apk-injector 2>/dev/null || true
-        # migrate 镜像不在 registry，必须本地构建（含完整 node_modules 供 prisma CLI 用）
+        # migrate 镜像含完整 node_modules 供 prisma CLI 用，必须本地构建
         info "构建 migrate 建表镜像（含完整依赖）..."
         docker compose --profile migrate build migrate || { error "migrate 镜像构建失败"; exit 1; }
         return 0
@@ -295,7 +299,6 @@ prepare_image() {
 
     # 远程镜像不可用 → 回退到本地构建模式
     warn "远程镜像不可用（可能 CI 尚未构建），切换到本地构建模式..."
-    prepare_local_build_source
     info "开始本地构建 app + migrate 镜像..."
     if ! docker compose build app; then
         error "app 镜像本地构建失败"
