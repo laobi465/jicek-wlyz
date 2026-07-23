@@ -1,0 +1,278 @@
+// ===========================================================================
+// jicek-wlyz 按键精灵示例代码（anjian / 按键精灵）
+// 网络验证 SaaS 系统 - 按键精灵脚本示例
+//
+// 协议规范参考 docs/api/protocol.md：
+// - verify_rsa: 明文（下发 RSA 公钥 + ECDHE 会话密钥）
+// - auth/use/unbind/heartbeat: RSA 签名 + AES-256-CBC 加密
+// - check_update: Base64 编码
+//
+// 注：按键精灵通过 Call.Cmd 调用外部 curl.exe + openssl.exe，或通过 COM 调用
+// 第三方组件实现加密。本示例展示完整调用流程。
+// ===========================================================================
+
+Dim BASE_URL, APP_KEY, CLIENT_RSA_PRIVATE_KEY
+Dim SERVER_RSA_PUBLIC_KEY, SESSION_KEY
+
+BASE_URL = "https://api.example.com"
+APP_KEY = "YOUR_APP_KEY"
+CLIENT_RSA_PRIVATE_KEY = "C:\path\to\client_private_key.pem"
+
+// ---------------------------------------------------------------------------
+// 1. verify_rsa - 获取服务端 RSA 公钥 + ECDHE 会话密钥
+// ---------------------------------------------------------------------------
+Function VerifyRsa()
+    Dim clientPrivKey, clientPubPem, body, resp, code, serverPub, serverEcdhPub
+    Dim shared, sha256
+
+    // 生成客户端 ECDHE 临时密钥对（P-256），调用 OpenSSL 命令行
+    clientPrivKey = Plugin.Sys.GetTempPath() & "\client_ecdh_" & Timer & ".pem"
+    clientPubPem = Plugin.Sys.GetTempPath() & "\client_ecdh_pub_" & Timer & ".pem"
+    Call Plugin.Sys.RunCmd("openssl ecparam -name prime256v1 -genkey -noout -out " & clientPrivKey, 0)
+    Call Plugin.Sys.RunCmd("openssl ec -in " & clientPrivKey & " -pubout -out " & clientPubPem, 0)
+    clientPubPem = ReadFileText(clientPubPem)
+
+    // 构造 JSON 请求体
+    body = "{""app_key"":""" & APP_KEY & """,""client_public_key"":""" & EscapeJson(clientPubPem) & """}"
+
+    // POST 请求
+    resp = HttpPost("/verify_rsa", body, "")
+    code = GetJsonValue(resp, "code")
+    If code <> "0" Then
+        MsgBox "verify_rsa 失败：" & GetJsonValue(resp, "msg")
+        VerifyRsa = False
+        Exit Function
+    End If
+
+    // 提取服务端公钥
+    serverPub = GetJsonNestedValue(resp, "data.server_public_key")
+    serverEcdhPub = GetJsonNestedValue(resp, "data.ecdhe_public_key")
+    SERVER_RSA_PUBLIC_KEY = serverPub
+
+    // ECDHE 派生会话密钥：客户端私钥 + 服务端 ECDHE 公钥 → SHA-256 → AES-256
+    Dim serverEcdhPubFile
+    serverEcdhPubFile = Plugin.Sys.GetTempPath() & "\server_ecdh_" & Timer & ".pem"
+    Call WriteFileText(serverEcdhPubFile, serverEcdhPub)
+
+    // 调用 OpenSSL 派生共享密钥
+    shared = Plugin.Sys.RunCmd("openssl pkeyutl -derive -inkey " & clientPrivKey & _
+        " -peerkey " & serverEcdhPubFile & " -peerform PEM", 0)
+
+    // SHA-256 派生 AES-256 密钥（输出 hex）
+    SESSION_KEY = Plugin.Sys.RunCmd("echo -n """ & shared & """ | openssl dgst -sha256 -hex | awk ""{print $NF}""", 0)
+    SESSION_KEY = Replace(SESSION_KEY, vbCrLf, "")
+    SESSION_KEY = Replace(SESSION_KEY, vbLf, "")
+
+    // 清理临时文件
+    Call Plugin.File.DeleteFile(clientPrivKey)
+    Call Plugin.File.DeleteFile(clientPubPem)
+    Call Plugin.File.DeleteFile(serverEcdhPubFile)
+
+    VerifyRsa = True
+End Function
+
+// ---------------------------------------------------------------------------
+// 2. auth - 验证卡密并激活设备
+// ---------------------------------------------------------------------------
+Function Auth(cardCode, machineCode, deviceName)
+    Dim payload, iv, encrypted, body, resp
+
+    payload = "{""card_code"":""" & cardCode & """,""machine_code"":""" & machineCode & """,""device_name"":""" & deviceName & """}"
+
+    iv = RandomHex(16)
+    encrypted = AesEncrypt(SESSION_KEY, iv, payload)
+
+    body = "{""iv"":""" & iv & """,""data"":""" & encrypted & """}"
+    resp = EncryptedAction("/auth", body)
+    Auth = resp
+End Function
+
+// ---------------------------------------------------------------------------
+// 3. heartbeat - 心跳保活
+// ---------------------------------------------------------------------------
+Function Heartbeat(deviceId, machineCode)
+    Dim payload, iv, encrypted, body, resp
+
+    payload = "{""device_id"":""" & deviceId & """,""machine_code"":""" & machineCode & """}"
+
+    iv = RandomHex(16)
+    encrypted = AesEncrypt(SESSION_KEY, iv, payload)
+
+    body = "{""iv"":""" & iv & """,""data"":""" & encrypted & """}"
+    resp = EncryptedAction("/heartbeat", body)
+    Heartbeat = resp
+End Function
+
+// ---------------------------------------------------------------------------
+// 4. unbind - 解绑设备
+// ---------------------------------------------------------------------------
+Function Unbind(deviceId)
+    Dim payload, iv, encrypted, body, resp
+
+    payload = "{""device_id"":""" & deviceId & """}"
+
+    iv = RandomHex(16)
+    encrypted = AesEncrypt(SESSION_KEY, iv, payload)
+
+    body = "{""iv"":""" & iv & """,""data"":""" & encrypted & """}"
+    resp = EncryptedAction("/unbind", body)
+    Unbind = resp
+End Function
+
+// ---------------------------------------------------------------------------
+// 内部：加密 action 通用流程
+// ---------------------------------------------------------------------------
+Function EncryptedAction(path, body)
+    Dim ts, nonce, signSource, signature, headers, raw, respIv, respEnc, plain
+
+    ts = Int(Timer)
+    nonce = RandomHex(16)
+
+    // 签名原文：METHOD\nPATH\nTS\nNONCE\nBODY
+    signSource = "POST" & vbCrLf & "/api/v1" & path & vbCrLf & ts & vbCrLf & nonce & vbCrLf & body
+    signature = RsaSha256Sign(CLIENT_RSA_PRIVATE_KEY, signSource)
+
+    headers = "X-App-Key: " & APP_KEY & "|X-Timestamp: " & ts & "|X-Nonce: " & nonce & "|X-Signature: " & signature
+
+    raw = HttpPost(path, body, headers)
+
+    // 响应解密
+    respIv = GetJsonValue(raw, "iv")
+    If respIv <> "" Then
+        respEnc = GetJsonValue(raw, "data")
+        plain = AesDecrypt(SESSION_KEY, respIv, respEnc)
+        EncryptedAction = plain
+    Else
+        EncryptedAction = raw
+    End If
+End Function
+
+// ---------------------------------------------------------------------------
+// 内部工具函数
+// ---------------------------------------------------------------------------
+Function HttpPost(path, body, headers)
+    Dim url, cmd, args, result
+    url = BASE_URL & "/api/v1" & path
+
+    cmd = "curl.exe -sS --max-time 10 -X POST """ & url & """ -H ""Content-Type: application/json"""
+
+    If headers <> "" Then
+        Dim arr, item
+        arr = Split(headers, "|")
+        For Each item In arr
+            cmd = cmd & " -H """ & item & """"
+        Next
+    End If
+
+    cmd = cmd & " --data-binary """ & body & """"
+    HttpPost = Plugin.Sys.RunCmd(cmd, 0)
+End Function
+
+Function RsaSha256Sign(keyFile, source)
+    Dim cmd
+    cmd = "echo -n """ & source & """ | openssl dgst -sha256 -sign """ & keyFile & """ | base64 -w0"
+    RsaSha256Sign = Plugin.Sys.RunCmd(cmd, 0)
+End Function
+
+Function AesEncrypt(keyHex, ivHex, data)
+    Dim cmd
+    cmd = "echo -n """ & data & """ | openssl enc -aes-256-cbc -K " & keyHex & " -iv " & ivHex & " | base64 -w0"
+    AesEncrypt = Plugin.Sys.RunCmd(cmd, 0)
+End Function
+
+Function AesDecrypt(keyHex, ivHex, encrypted)
+    Dim cmd
+    cmd = "echo """ & encrypted & """ | base64 -d | openssl enc -d -aes-256-cbc -K " & keyHex & " -iv " & ivHex
+    AesDecrypt = Plugin.Sys.RunCmd(cmd, 0)
+End Function
+
+Function RandomHex(byteLen)
+    RandomHex = Plugin.Sys.RunCmd("openssl rand -hex " & byteLen, 0)
+    RandomHex = Replace(RandomHex, vbCrLf, "")
+End Function
+
+Function ReadFileText(path)
+    Dim fso, f
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set f = fso.OpenTextFile(path, 1)
+    ReadFileText = f.ReadAll
+    f.Close
+End Function
+
+Function WriteFileText(path, text)
+    Dim fso, f
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set f = fso.CreateTextFile(path, True)
+    f.Write text
+    f.Close
+End Function
+
+Function EscapeJson(text)
+    EscapeJson = Replace(text, "\", "\\")
+    EscapeJson = Replace(EscapeJson, """", "\""")
+    EscapeJson = Replace(EscapeJson, vbCrLf, "\n")
+    EscapeJson = Replace(EscapeJson, vbCr, "\n")
+    EscapeJson = Replace(EscapeJson, vbLf, "\n")
+End Function
+
+Function GetJsonValue(json, key)
+    // 简化 JSON 提取（按键精灵无原生 JSON 支持）
+    // 实际使用建议引入 JSON COM 组件或正则匹配
+    Dim pattern, regex, matches
+    pattern = """" & key & """\s*:\s*""([^""]*)"""
+    Set regex = New RegExp
+    regex.Pattern = pattern
+    Set matches = regex.Execute(json)
+    If matches.Count > 0 Then
+        GetJsonValue = matches(0).SubMatches(0)
+    Else
+        GetJsonValue = ""
+    End If
+End Function
+
+Function GetJsonNestedValue(json, path)
+    Dim parts, i, current
+    parts = Split(path, ".")
+    current = json
+    For i = 0 To UBound(parts)
+        current = GetJsonValue(current, parts(i))
+    Next
+    GetJsonNestedValue = current
+End Function
+
+// ---------------------------------------------------------------------------
+// 主流程
+// ---------------------------------------------------------------------------
+Function Main()
+    Dim machineCode, authResp, deviceId, hbResult
+
+    If Not VerifyRsa() Then
+        Exit Function
+    End If
+
+    // 获取机器码（按键精灵获取硬盘序列号 + 主板序列号组合哈希）
+    machineCode = GetMachineCode()
+
+    authResp = Auth("XXXX-XXXX-XXXX-XXXX", machineCode, "按键精灵设备")
+    MsgBox "Auth 结果：" & authResp
+
+    deviceId = GetJsonValue(authResp, "device_id")
+
+    // 心跳循环
+    Do While True
+        Delay 60000  // 60 秒
+        hbResult = Heartbeat(deviceId, machineCode)
+        If InStr(hbResult, """code"":0") = 0 Then
+            MsgBox "心跳失败，需重新验证"
+            Exit Do
+        End If
+    Loop
+End Function
+
+Function GetMachineCode()
+    Dim serial
+    serial = Plugin.Sys.RunCmd("wmic diskdrive get serialnumber | findstr /v SerialNumber | head -1", 0)
+    GetMachineCode = MD5(serial)
+End Function
+
+Call Main

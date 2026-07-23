@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jicek-wlyz HTML/JS 接入示例</title>
+    <!--
+    ===========================================================================
+    jicek-wlyz HTML/JS 示例代码（htmljs / 浏览器 + Web Crypto API）
+
+    网络验证 SaaS 系统 - 浏览器端接入示例
+
+    协议规范参考 docs/api/protocol.md：
+    - verify_rsa: 明文（下发 RSA 公钥 + ECDHE 会话密钥）
+    - auth/use/unbind/heartbeat: RSA 签名 + AES-256-CBC 加密
+    - check_update: Base64 编码
+
+    注：浏览器原生 Web Crypto API 支持 RSA-PSS / ECDH / AES-CBC，
+    但 RSA-PKCS1v15-SHA256 签名需通过 WebCrypto subtle.sign('RSASSA-PKCS1-v1_5') 实现。
+    CORS 必须由服务端允许跨域，建议同源接入或通过代理转发。
+    ===========================================================================
+    -->
+    <style>
+        body {
+            font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #1E293B;
+            background: #FFFFFF;
+        }
+        h1 { color: #1E3A5F; font-weight: 600; }
+        h2 { color: #1E3A5F; font-weight: 600; margin-top: 32px; }
+        .card {
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 16px 0;
+            background: #FFFFFF;
+        }
+        input, button {
+            padding: 8px 12px;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+            font-size: 14px;
+            margin: 4px;
+        }
+        input:focus { outline: none; border-color: #1E3A5F; }
+        button {
+            background: #1E3A5F;
+            color: #FFFFFF;
+            cursor: pointer;
+            border: none;
+        }
+        button:hover { background: #2C4F7C; }
+        button:disabled { background: #94A3B8; cursor: not-allowed; }
+        pre {
+            background: #F8FAFC;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #E2E8F0;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+        .log { color: #64748B; }
+        .error { color: #EF4444; }
+        .success { color: #10B981; }
+    </style>
+</head>
+<body>
+    <h1>jicek-wlyz HTML/JS 接入示例</h1>
+
+    <div class="card">
+        <h2>配置</h2>
+        <label>服务端 URL：<input type="text" id="baseUrl" value="https://api.example.com" style="width:320px"></label><br>
+        <label>AppKey：<input type="text" id="appKey" placeholder="YOUR_APP_KEY" style="width:320px"></label><br>
+        <label>客户端 RSA 私钥（PEM）：</label><br>
+        <textarea id="clientPrivateKey" rows="6" cols="80" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
+    </div>
+
+    <div class="card">
+        <h2>验证卡密</h2>
+        <label>卡密码：<input type="text" id="cardCode" placeholder="XXXX-XXXX-XXXX-XXXX"></label><br>
+        <label>机器码：<input type="text" id="machineCode" placeholder="DEVICE_HASH"></label><br>
+        <button id="btnVerifyRsa" onclick="doVerifyRsa()">1. 协商会话密钥</button>
+        <button id="btnAuth" onclick="doAuth()" disabled>2. 验证卡密</button>
+    </div>
+
+    <div class="card">
+        <h2>输出</h2>
+        <pre id="output" class="log">等待操作...</pre>
+    </div>
+
+<script>
+'use strict';
+
+const BASE_URL_INPUT = () => document.getElementById('baseUrl').value;
+const APP_KEY_INPUT = () => document.getElementById('appKey').value;
+const CLIENT_KEY_INPUT = () => document.getElementById('clientPrivateKey').value;
+
+let serverRsaPublicKey = null;
+let sessionKey = null;  // ArrayBuffer (32 bytes)
+
+function log(msg, type) {
+    const el = document.getElementById('output');
+    const cls = type === 'error' ? 'error' : (type === 'success' ? 'success' : 'log');
+    el.className = cls;
+    el.textContent = msg;
+}
+
+// ---------------------------------------------------------------------------
+// 1. verify_rsa - 获取服务端 RSA 公钥 + ECDHE 会话密钥
+// ---------------------------------------------------------------------------
+async function verifyRsa() {
+    const baseUrl = BASE_URL_INPUT();
+    const appKey = APP_KEY_INPUT();
+
+    // 客户端 ECDHE 临时密钥对（P-256）
+    const clientKeyPair = await window.crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true, ['deriveKey', 'deriveBits']
+    );
+    const clientPubJwk = await window.crypto.subtle.exportKey('jwk', clientKeyPair.publicKey);
+
+    // 将客户端公钥转换为 PEM（SPKI 格式）
+    const clientPubSpki = await window.crypto.subtle.exportKey('spki', clientKeyPair.publicKey);
+    const clientPubPem = buildPemFromSpki(clientPubSpki);
+
+    const body = JSON.stringify({
+        app_key: appKey,
+        client_public_key: clientPubPem,
+    });
+
+    const resp = await fetch(`${baseUrl}/api/v1/verify_rsa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+    });
+    const data = await resp.json();
+    if (data.code !== 0) {
+        throw new Error(`verify_rsa 失败：${data.msg}`);
+    }
+
+    serverRsaPublicKey = data.data.server_public_key;
+
+    // 解析服务端 ECDHE 公钥
+    const serverEcdhPubSpki = derFromPem(data.data.ecdhe_public_key);
+    const serverEcdhPubKey = await window.crypto.subtle.importKey(
+        'spki', serverEcdhPubSpki,
+        { name: 'ECDH', namedCurve: 'P-256' },
+        false, []
+    );
+
+    // ECDHE 派生 AES-256 会话密钥
+    sessionKey = await window.crypto.subtle.deriveBits(
+        { name: 'ECDH', public: serverEcdhPubKey },
+        clientKeyPair.privateKey,
+        256  // 256 bits = 32 bytes
+    );
+
+    return data.data;
+}
+
+// ---------------------------------------------------------------------------
+// 2. auth - 验证卡密并激活设备
+// ---------------------------------------------------------------------------
+async function auth(cardCode, machineCode, deviceName) {
+    return encryptedAction('/auth', {
+        card_code: cardCode,
+        machine_code: machineCode,
+        device_name: deviceName,
+    });
+}
+
+// ---------------------------------------------------------------------------
+// 3. heartbeat
+// ---------------------------------------------------------------------------
+async function heartbeat(deviceId, machineCode) {
+    return encryptedAction('/heartbeat', {
+        device_id: deviceId,
+        machine_code: machineMachine,
+    });
+}
+
+// ---------------------------------------------------------------------------
+// 4. unbind
+// ---------------------------------------------------------------------------
+async function unbind(deviceId) {
+    return encryptedAction('/unbind', { device_id: deviceId });
+}
+
+// ---------------------------------------------------------------------------
+// 内部：加密 action 通用流程
+// ---------------------------------------------------------------------------
+async function encryptedAction(path, payload) {
+    if (!sessionKey) {
+        throw new Error('会话未建立，请先调用 verifyRsa');
+    }
+
+    const plaintext = JSON.stringify(payload);
+    const iv = window.crypto.getRandomValues(new Uint8Array(16));
+
+    // 导入 AES-256-CBC 密钥
+    const aesKey = await window.crypto.subtle.importKey(
+        'raw', sessionKey, { name: 'AES-CBC' }, false, ['encrypt', 'decrypt']
+    );
+
+    // Web Crypto AES-CBC 默认使用 PKCS7 padding
+    const encryptedBuf = await window.crypto.subtle.encrypt(
+        { name: 'AES-CBC', iv }, aesKey,
+        new TextEncoder().encode(plaintext)
+    );
+    const encrypted = base64Encode(new Uint8Array(encryptedBuf));
+
+    const body = JSON.stringify({
+        iv: bytesToHex(iv),
+        data: encrypted,
+    });
+
+    const ts = String(Math.floor(Date.now() / 1000));
+    const nonce = bytesToHex(window.crypto.getRandomValues(new Uint8Array(16)));
+    const signature = await sign('POST', '/api/v1' + path, ts, nonce, body);
+
+    const headers = {
+        'X-App-Key': APP_KEY_INPUT(),
+        'X-Timestamp': ts,
+        'X-Nonce': nonce,
+        'X-Signature': signature,
+        'Content-Type': 'application/json',
+    };
+
+    const resp = await fetch(`${BASE_URL_INPUT()}/api/v1${path}`, {
+        method: 'POST',
+        headers,
+        body,
+    });
+    let result = await resp.json();
+
+    // 响应解密
+    if (result && result.iv && result.data) {
+        const respIv = hexToBytes(result.iv);
+        const respEnc = base64Decode(result.data);
+        const decryptedBuf = await window.crypto.subtle.decrypt(
+            { name: 'AES-CBC', iv: respIv }, aesKey, respEnc
+        );
+        const plainText = new TextDecoder().decode(decryptedBuf);
+        result = JSON.parse(plainText);
+    }
+
+    if (result.code !== 0) {
+        throw new Error(`[${result.code}] ${result.msg}`);
+    }
+    return result.data;
+}
+
+// ---------------------------------------------------------------------------
+// RSA-SHA256 签名（PKCS#1 v1.5）
+// ---------------------------------------------------------------------------
+async function sign(method, path, ts, nonce, body) {
+    const source = [method, path, ts, nonce, body].join('\n');
+    const sourceBytes = new TextEncoder().encode(source);
+
+    // 导入 PKCS#8 私钥
+    const privDer = derFromPem(CLIENT_KEY_INPUT());
+    const privKey = await window.crypto.subtle.importKey(
+        'pkcs8', privDer,
+        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+        false, ['sign']
+    );
+    const sigBuf = await window.crypto.subtle.sign(
+        'RSASSA-PKCS1-v1_5', privKey, sourceBytes
+    );
+    return base64Encode(new Uint8Array(sigBuf));
+}
+
+// ---------------------------------------------------------------------------
+// 工具：编码转换
+// ---------------------------------------------------------------------------
+function buildPemFromSpki(spki) {
+    const b64 = base64Encode(new Uint8Array(spki));
+    const lines = b64.match(/.{1,64}/g).join('\n');
+    return `-----BEGIN PUBLIC KEY-----\n${lines}\n-----END PUBLIC KEY-----\n`;
+}
+
+function derFromPem(pem) {
+    const body = pem
+        .replace(/-----BEGIN [^-]+-----/g, '')
+        .replace(/-----END [^-]+-----/g, '')
+        .replace(/\s+/g, '');
+    return base64Decode(body).buffer;
+}
+
+function base64Encode(bytes) {
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary);
+}
+
+function base64Decode(str) {
+    const binary = atob(str);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+function bytesToHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBytes(hex) {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return bytes;
+}
+
+// ---------------------------------------------------------------------------
+// UI 绑定
+// ---------------------------------------------------------------------------
+async function doVerifyRsa() {
+    try {
+        log('正在协商会话密钥...');
+        const data = await verifyRsa();
+        document.getElementById('btnAuth').disabled = false;
+        log('会话密钥协商成功，crypto_mode=' + data.crypto_mode, 'success');
+    } catch (e) {
+        log('verify_rsa 失败：' + e.message, 'error');
+    }
+}
+
+async function doAuth() {
+    const cardCode = document.getElementById('cardCode').value;
+    const machineCode = document.getElementById('machineCode').value;
+    if (!cardCode || !machineCode) {
+        log('请填写卡密码和机器码', 'error');
+        return;
+    }
+    try {
+        log('正在验证卡密...');
+        const result = await auth(cardCode, machineCode, 'Browser');
+        log('验证成功，device_id=' + result.device_id + ', token=' + result.token, 'success');
+    } catch (e) {
+        log('auth 失败：' + e.message, 'error');
+    }
+}
+
+// 自动填充机器码（浏览器指纹示例）
+document.getElementById('machineCode').value =
+    navigator.userAgent.length.toString(16) + '_' + screen.width + 'x' + screen.height;
+</script>
+</body>
+</html>
