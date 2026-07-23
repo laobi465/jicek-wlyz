@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.5.4 ｜ 状态：修复一键安装建表失败（prisma CLI 调用方式 + 诊断输出） ｜ 最后更新：2026-07-23
+> 版本：1.5.5 ｜ 状态：修复建表失败——新增 migrate 专用镜像（解决 standalone 缺 prisma 依赖） ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -46,6 +46,7 @@
 | 1.5.2 | 移除容器启动自动同步表结构（Dockerfile CMD 删除 `npx prisma db push --skip-generate`，改为仅 `node scripts/init-admin.mjs && node server.js`）+ install.sh/README 文档移除"同步表结构"描述，表结构改为部署前手动创建（`docker compose exec app npx prisma db push`） | 已完成 |
 | 1.5.3 | 优化一键安装脚本 deploy/install.sh：① 自动建表（恢复一键体验，db 就绪后 `docker compose run --rm --no-deps app npx prisma db push --skip-generate`，无需手动建表）② 子命令支持（install 默认幂等 / update 拉新镜像+同步表+重启 / uninstall 停删容器保留数据卷 / reinstall 保留 .env 重装 / --help）③ 幂等检测（已安装且运行中则提示引导子命令，不重复安装）④ 失败自动打日志（db/app 健康检查失败、建表失败时自动 `docker compose logs --tail=50`）⑤ 分步启动（db+redis → wait db healthy → 建表 → app+apk-injector → wait app healthy）⑥ set -euo pipefail 健壮性 ⑦ shellcheck 通过（仅剩 SC1091 不可避免 info） | 已完成 |
 | 1.5.4 | 修复一键安装建表失败：① install.sh create_db_schema 改用 `node /app/node_modules/prisma/build/index.js` 直接调用 prisma CLI（替代 `npx prisma`——standalone 镜像无 node_modules/.bin 符号链接，npx 找不到本地 prisma 包会尝试联网下载失败）② 捕获 prisma 完整输出到 /tmp/jicek-schema.log，失败时 cat 显示（docker compose logs 看不到 run --rm 已删除容器的输出，导致看不到真正错误）③ Dockerfile runner 阶段补充 COPY node_modules/.bin/prisma（让 npx prisma 也能用）④ 清理 Dockerfile 重复的 @prisma/.prisma COPY ⑤ CMD 注释更新为"表由 install.sh 自动创建" | 已完成 |
+| 1.5.5 | 修复建表失败——新增 migrate 专用镜像：1.5.4 的修复无效，因为根本原因是 app(standalone) 镜像缺 prisma CLI 的传递依赖 `effect` 包（@prisma/config 依赖 effect，prisma CLI 依赖 @prisma/config），standalone 模式只追踪应用代码用到的依赖。修复方案：① Dockerfile 新增 `migrate` 构建阶段（FROM base 含完整 node_modules + COPY builder 的 prisma schema 与 .prisma 客户端，prisma CLI 及 effect 等传递依赖齐全）② docker-compose.yml 新增 migrate service（profiles: ["migrate"] 隔离，正常 docker compose up 不启动；含 DATABASE_URL + depends_on db healthy）③ install.sh create_db_schema 改用 `docker compose --profile migrate run --rm migrate`（migrate 镜像的 CMD 即 `npx prisma db push --skip-generate`）④ install.sh prepare_image / cmd_update 增加 migrate 镜像构建步骤 ⑤ runner 阶段移除无用的 prisma CLI + .bin/prisma COPY（runner 不再需要跑 prisma，建表由 migrate 负责） | 已完成 |
 
 ### 1.3 风险与依赖清单
 

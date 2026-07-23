@@ -1,6 +1,6 @@
 # jicek-wlyz 项目文档（PROJECT.md）
 
-> 版本：1.5.4 ｜ 状态：修复一键安装建表失败（prisma CLI 调用方式 + 诊断输出） ｜ 最后更新：2026-07-23
+> 版本：1.5.5 ｜ 状态：修复建表失败——新增 migrate 专用镜像（解决 standalone 缺 prisma 依赖） ｜ 最后更新：2026-07-23
 > 维护规则：任何变更按 SPEC.md 联动更新，版本号语义化递增
 
 ---
@@ -345,3 +345,4 @@ jicek-wlyz/
 | 1.5.2 | 2026-07-23 | **移除容器启动自动同步表结构**：Dockerfile CMD 删除 `npx prisma db push --skip-generate`，改为 `node scripts/init-admin.mjs && node server.js`；保留 prisma CLI + schema COPY 供容器内手动 prisma 操作 / install.sh 提示改为"首次启动需先手动创建数据库表" / README 手动部署注释改为"创建数据库表（手动部署需执行一次）"+ 容器启动说明改为"需确保数据库表已提前创建" / init-admin.mjs 头注释移除"在 prisma db push 之后" / 表结构改为部署前手动创建（docker compose exec app npx prisma db push）；tsc 自检 0 errors；next build 验证通过 |
 | 1.5.3 | 2026-07-23 | **优化一键安装脚本 deploy/install.sh**：① 自动建表恢复一键体验（db 就绪后 `docker compose run --rm --no-deps app npx prisma db push`，无需手动建表）② 子命令 install/update/uninstall/reinstall/--help ③ 幂等检测（已安装运行中则提示引导子命令）④ 失败自动打日志（db/app 健康检查失败/建表失败时 docker compose logs --tail=50）⑤ 分步启动（db+redis → wait db → 建表 → app → wait app）⑥ set -euo pipefail ⑦ shellcheck 通过（仅剩 SC1091 不可避免）/ README 新增「常用运维命令」段 + 安装步骤新增建表说明；bash -n + --help + 未知命令处理验证通过 |
 | 1.5.4 | 2026-07-23 | **修复一键安装建表失败**：① install.sh create_db_schema 改用 `node /app/node_modules/prisma/build/index.js` 直接调用 prisma CLI（替代 `npx prisma`——standalone 镜像无 node_modules/.bin 符号链接，npx 找不到本地 prisma 包会尝试联网下载失败）② 捕获 prisma 完整输出到 /tmp/jicek-schema.log，失败时 cat 显示（docker compose logs 看不到 run --rm 已删除容器的输出，导致看不到真正错误）③ Dockerfile runner 阶段补充 COPY node_modules/.bin/prisma（让 npx prisma 也能用）④ 清理 Dockerfile 重复的 @prisma/.prisma COPY ⑤ CMD 注释更新为"表由 install.sh 自动创建"；bash -n 语法通过 + shellcheck 仅剩 SC1091 |
+| 1.5.5 | 2026-07-23 | **修复建表失败——新增 migrate 专用镜像**：1.5.4 无效，根本原因是 app(standalone) 镜像缺 prisma CLI 传递依赖 `effect`（@prisma/config 依赖 effect，prisma 依赖 @prisma/config），standalone 只追踪应用代码依赖。修复：① Dockerfile 新增 migrate 构建阶段（FROM base 含完整 node_modules + COPY builder 的 prisma/schema + .prisma，prisma CLI 及 effect 等传递依赖齐全）② docker-compose.yml 新增 migrate service（profiles:["migrate"] 隔离不默认启动 + DATABASE_URL + depends_on db healthy）③ install.sh create_db_schema 改用 `docker compose --profile migrate run --rm migrate`（CMD 即 npx prisma db push --skip-generate）④ prepare_image + cmd_update 增加 migrate 镜像构建 ⑤ runner 移除无用 prisma CLI + .bin/prisma COPY；bash -n 通过 |

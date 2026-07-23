@@ -25,6 +25,20 @@ RUN npm run build
 RUN mkdir -p node_modules/.prisma node_modules/@prisma
 
 # =============================================================================
+# migrate 阶段：建表专用镜像（含完整 node_modules，prisma CLI 依赖齐全）
+# 用途：install.sh / update 流程中执行 prisma db push 建表
+# 不随 docker compose up 默认启动，由 --profile migrate 按需运行
+# =============================================================================
+FROM base AS migrate
+WORKDIR /app
+# 复制 prisma schema + 生成好的 Prisma Client（复用 builder 产物）
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# base 阶段已 npm ci 安装完整依赖（含 prisma CLI 及其传递依赖 effect 等）
+# 建表入口：npx prisma db push --skip-generate（由 install.sh 通过 docker compose run 调用）
+CMD ["npx", "prisma", "db", "push", "--skip-generate"]
+
+# =============================================================================
 # runner 阶段：精简运行时镜像（非 root 用户运行）
 # =============================================================================
 FROM node:20-alpine AS runner
@@ -48,10 +62,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # 复制 Prisma 生成客户端（standalone 未必完整追踪引擎二进制）
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
-# 复制 prisma CLI + schema，供容器内执行 prisma 命令（建表/init-admin 依赖）
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
-# 复制 prisma CLI 的 .bin 符号链接（standalone 产物不含 .bin，导致 npx prisma 找不到本地包）
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+# 复制 prisma schema（init-admin.mjs 运行时不需要，保留供手动排查）
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 # 复制初始化脚本（创建默认超管 admin@example.com/admin123）
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
@@ -60,5 +71,5 @@ USER nextjs
 # 端口由运行时 PORT 环境变量决定（默认 3000）
 EXPOSE 3000
 # 容器启动时：1) init-admin 创建默认超管 2) 启动 Next.js server
-# 注意：数据库表由 install.sh 通过 docker compose run 临时容器自动创建（prisma db push）
+# 注意：数据库表由 install.sh 通过 migrate 专用镜像自动创建（prisma db push）
 CMD ["sh", "-c", "node scripts/init-admin.mjs && node server.js"]

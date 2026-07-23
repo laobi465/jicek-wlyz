@@ -134,16 +134,16 @@ wait_for_app_healthy() {
     info "应用健康检查通过"
 }
 
-# 创建数据库表结构（临时容器执行 prisma db push）
-# 前置条件：db 容器已启动且健康
+# 创建数据库表结构（用 migrate 专用镜像执行 prisma db push）
+# 前置条件：db 容器已启动且健康；migrate 镜像已构建
+# 为什么用 migrate 镜像而非 app 镜像：app 是 Next.js standalone 精简镜像，
+# 缺 prisma CLI 的传递依赖（effect 等），npx prisma 会报 Cannot find module 'effect'
 create_db_schema() {
     info "创建数据库表结构（prisma db push）..."
-    # 用 node 直接调用 prisma CLI 入口（standalone 镜像无 npx/.bin 符号链接，npx 会尝试联网下载失败）
+    # 用 migrate 专用镜像（含完整 node_modules）通过 --profile migrate 运行
     # 捕获完整输出到日志文件——docker compose logs 看不到 run --rm 已删除容器的输出
     local schema_log="/tmp/jicek-schema.log"
-    if docker compose run --rm --no-deps app \
-        node /app/node_modules/prisma/build/index.js db push \
-        --schema=/app/prisma/schema.prisma --skip-generate \
+    if docker compose --profile migrate run --rm migrate \
         > "${schema_log}" 2>&1; then
         info "数据库表结构创建成功"
         tail -3 "${schema_log}"
@@ -285,17 +285,24 @@ prepare_image() {
     cd "${DEPLOY_DIR}"
 
     if docker compose pull app 2>/dev/null; then
-        info "远程镜像拉取成功"
+        info "远程 app 镜像拉取成功"
         docker compose pull db redis apk-injector 2>/dev/null || true
+        # migrate 镜像不在 registry，必须本地构建（含完整 node_modules 供 prisma CLI 用）
+        info "构建 migrate 建表镜像（含完整依赖）..."
+        docker compose --profile migrate build migrate || { error "migrate 镜像构建失败"; exit 1; }
         return 0
     fi
 
     # 远程镜像不可用 → 回退到本地构建模式
     warn "远程镜像不可用（可能 CI 尚未构建），切换到本地构建模式..."
     prepare_local_build_source
-    info "开始本地构建镜像..."
+    info "开始本地构建 app + migrate 镜像..."
     if ! docker compose build app; then
-        error "本地构建失败"
+        error "app 镜像本地构建失败"
+        exit 1
+    fi
+    if ! docker compose --profile migrate build migrate; then
+        error "migrate 镜像本地构建失败"
         exit 1
     fi
     info "镜像构建完成"
@@ -451,8 +458,11 @@ cmd_update() {
        && ! docker compose images app 2>/dev/null | grep -q app; then
         warn "远程镜像不可用，尝试本地构建..."
         prepare_local_build_source
-        docker compose build app || { error "构建失败"; exit 1; }
+        docker compose build app || { error "app 构建失败"; exit 1; }
     fi
+    # migrate 镜像必须本地构建（含完整 node_modules 供 prisma CLI 用）
+    info "构建 migrate 建表镜像..."
+    docker compose --profile migrate build migrate || { error "migrate 构建失败"; exit 1; }
 
     step "2" "重启数据层..."
     docker compose up -d db redis

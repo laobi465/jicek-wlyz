@@ -106,6 +106,26 @@ services:
     networks:
       - jicek-net
 
+  # ---------- 建表专用镜像（仅 install.sh/update 通过 --profile migrate 调用）----------
+  # 含完整 node_modules（prisma CLI 及其传递依赖 effect 等齐全），runner standalone 镜像缺这些依赖
+  # 正常 docker compose up 不会启动此服务（profiles 隔离）
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    image: jicek-wlyz-migrate:latest
+    container_name: jicek-wlyz-migrate
+    profiles: ["migrate"]
+    environment:
+      # 容器内部通过服务名访问 db，使用容器内部默认端口
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/${DB_NAME:-jicek_wlyz}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - jicek-net
+
 networks:
   jicek-net:
     driver: bridge
