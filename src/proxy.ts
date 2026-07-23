@@ -7,14 +7,17 @@ import {
 } from '@/lib/security/error-code';
 
 /**
- * 全局中间件（M7 安全加固）
+ * 全局代理（M7 安全加固）
+ *
+ * Next.js 16：middleware 文件约定已弃用，统一改名为 proxy。
  *
  * 职责：
  * 1. 全局 IP 限流（§2.6.4 第 6 项：100 req/min/IP）
  * 2. HTTP 安全头注入（§2.6.4 第 17 项：HSTS/X-Frame-Options 等）
  * 3. 超管后台 IP 白名单（§2.6.4 第 11 项）
  *
- * 注意：使用 Node.js runtime（非 Edge），以便复用 ioredis 连接
+ * 注意：proxy 默认使用 Node.js runtime（非 Edge），以便复用 ioredis 连接。
+ * Next.js 16 不允许在 proxy 文件中设置 runtime 配置项，否则会抛错。
  */
 
 /** 全局 IP 限流：100 次/分钟 */
@@ -105,7 +108,7 @@ function injectSecurityHeaders(response: NextResponse): void {
   );
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
   const clientIp = getClientIp(request);
 
@@ -142,7 +145,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       }
     } catch {
       // Redis 不可用时不阻断请求（降级），仅记录日志
-      console.error('[middleware] 全局限流 Redis 查询失败，降级放行');
+      console.error('[proxy] 全局限流 Redis 查询失败，降级放行');
     }
   }
 
@@ -155,9 +158,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 /**
- * Middleware 匹配规则
+ * Proxy 匹配规则
  *
  * 排除静态资源与 Next.js 内部路径
+ *
+ * 注意：Next.js 16 的 proxy 不支持 runtime 配置项（默认 Node.js runtime），
+ * 设置 runtime 会抛错，因此这里仅保留 matcher。
  */
 export const config = {
   matcher: [
@@ -168,5 +174,4 @@ export const config = {
      */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
-  runtime: 'nodejs',
 };
