@@ -11,10 +11,10 @@ import type { UserRole } from "@/lib/auth-client";
  * 三角色共享入口：仪表盘 / 工单 / 通知 / 签到
  * 角色专属入口：
  * - developer: 应用 / 卡密 / 设备 / 云变量 / APK 注入 / 接入中心 / 店铺 / 套餐（M8.1 已完成）
- * - agent: 下级代理 / 邀请码 / 提现 / 佣金（M8.2）
+ * - agent: 下级代理 / 邀请码 / 佣金明细 / 提现申请（M8.2 已完成）
  * - super_admin: 用户管理 / 业务总览 / 收入 / 提现审核 / 系统配置 / 审计 / 更新（M8.3）
  *
- * M8.2/M8.3 子页面尚未实现，先显示"敬请期待"占位（非假数据，仅文字提示）
+ * M8.3 子页面尚未实现，先显示"敬请期待"占位（非假数据，仅文字提示）
  */
 
 interface NavItem {
@@ -47,10 +47,10 @@ const DEVELOPER_NAV: NavItem[] = [
 
 const AGENT_NAV: NavItem[] = [
   { href: "/agent", label: "代理概览" },
-  { href: "/agent/subordinates", label: "下级代理", comingSoon: true },
-  { href: "/agent/invitations", label: "邀请码", comingSoon: true },
-  { href: "/agent/commission", label: "佣金明细", comingSoon: true },
-  { href: "/agent/withdrawals", label: "提现申请", comingSoon: true },
+  { href: "/agent/subordinates", label: "下级代理" },
+  { href: "/agent/invitations", label: "邀请码" },
+  { href: "/agent/commission", label: "佣金明细" },
+  { href: "/agent/withdrawals", label: "提现申请" },
 ];
 
 const ADMIN_NAV: NavItem[] = [

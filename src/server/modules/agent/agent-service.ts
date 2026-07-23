@@ -1,3 +1,4 @@
+import type { Agent } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { consumeInvitation } from '@/server/modules/invitation/invitation-service';
 
@@ -411,5 +412,58 @@ export async function listSubAgents(parentAgentId: string) {
       user: { select: { id: true, email: true, nickname: true, status: true, created_at: true } },
     },
     orderBy: { created_at: 'desc' },
+  });
+}
+
+/**
+ * 全量代理列表（超管用）
+ *
+ * 支持 level / status 过滤，limit 默认 20 范围 1-100，offset 非负，按 created_at desc
+ */
+export async function listAllAgents(options: {
+  level?: number;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  agents: (Agent & { user: { id: string; email: string; nickname: string | null; status: string } })[];
+  total: number;
+}> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+
+  const where: { level?: number; status?: string } = {};
+  if (options.level !== undefined) where.level = options.level;
+  if (options.status !== undefined) where.status = options.status;
+
+  const [agents, total] = await Promise.all([
+    prisma.agent.findMany({
+      where,
+      include: {
+        user: { select: { id: true, email: true, nickname: true, status: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.agent.count({ where }),
+  ]);
+
+  return { agents, total };
+}
+
+/**
+ * 按 Agent.id 查询代理详情
+ */
+export async function getAgentById(
+  agentId: string,
+): Promise<
+  (Agent & { user: { id: string; email: string; nickname: string | null; status: string } }) | null
+> {
+  return prisma.agent.findUnique({
+    where: { id: agentId },
+    include: {
+      user: { select: { id: true, email: true, nickname: true, status: true } },
+    },
   });
 }

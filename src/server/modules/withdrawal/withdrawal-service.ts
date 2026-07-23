@@ -1,3 +1,4 @@
+import type { Withdrawal } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
 /**
@@ -334,4 +335,47 @@ export async function listWithdrawals(filter: {
     take: filter.limit ?? 20,
     skip: filter.offset ?? 0,
   });
+}
+
+/**
+ * 按 id 查询单条提现记录
+ */
+export async function getWithdrawalById(withdrawalId: string): Promise<Withdrawal | null> {
+  return prisma.withdrawal.findUnique({
+    where: { id: withdrawalId },
+  });
+}
+
+/**
+ * 列出提现记录（含 total，用于前端分页）
+ *
+ * 复用 listWithdrawals 的查询逻辑，额外返回 count
+ */
+export async function listWithdrawalsWithTotal(filter: {
+  agentUserId?: string;
+  status?: WithdrawalStatus;
+  limit?: number;
+  offset?: number;
+}): Promise<{ withdrawals: Withdrawal[]; total: number }> {
+  const limit = Math.min(Math.max(filter.limit ?? 20, 1), 100);
+  const offset = Math.max(filter.offset ?? 0, 0);
+
+  const where: {
+    agent_id?: string;
+    status?: string;
+  } = {};
+  if (filter.agentUserId) where.agent_id = filter.agentUserId;
+  if (filter.status) where.status = filter.status;
+
+  const [withdrawals, total] = await Promise.all([
+    prisma.withdrawal.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.withdrawal.count({ where }),
+  ]);
+
+  return { withdrawals, total };
 }

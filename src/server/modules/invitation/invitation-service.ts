@@ -1,3 +1,4 @@
+import type { InvitationCode } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { randomBytes } from 'crypto';
 
@@ -258,4 +259,43 @@ export async function listInvitationsByGenerator(generatorId: string) {
     },
     orderBy: { created_at: 'desc' },
   });
+}
+
+/**
+ * 全量邀请码列表（超管用）
+ *
+ * 可按 generatorId / type 过滤，limit 默认 20 范围 1-100，offset 非负，按 created_at desc
+ */
+export async function listAllInvitations(options: {
+  generatorId?: string;
+  type?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  invitations: (InvitationCode & {
+    generator: { id: string; email: string; nickname: string | null; role: string };
+  })[];
+  total: number;
+}> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+
+  const where: { generator_id?: string; type?: string } = {};
+  if (options.generatorId) where.generator_id = options.generatorId;
+  if (options.type) where.type = options.type;
+
+  const [invitations, total] = await Promise.all([
+    prisma.invitationCode.findMany({
+      where,
+      include: {
+        generator: { select: { id: true, email: true, nickname: true, role: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.invitationCode.count({ where }),
+  ]);
+
+  return { invitations, total };
 }

@@ -1,6 +1,6 @@
 # jicek-wlyz 项目文档（PROJECT.md）
 
-> 版本：1.2.0 ｜ 状态：M8.1 开发者管理页完成 ｜ 最后更新：2026-07-23
+> 版本：1.3.0 ｜ 状态：M8.2 代理管理页完成 ｜ 最后更新：2026-07-23
 > 维护规则：任何变更按 SPEC.md 联动更新，版本号语义化递增
 
 ---
@@ -127,7 +127,7 @@ Next.js API（Route Handlers）
 - [已完成] **敏感字段加密**（AES-256-GCM + scrypt 密钥派生，手机号/真实姓名加密存储，§2.6.4 第 14 项）
 - [已完成] **健康检查 API**（/api/health，数据库 + Redis + 环境变量检查，供负载均衡探针）
 
-### 3.4 Web 控制台（M8.0 / M8.1 已完成）
+### 3.4 Web 控制台（M8.0 / M8.1 / M8.2 已完成）
 - [已完成] 官网营销页：/ 首页改为产品介绍页（Hero + 8 项核心特性 + 12 语言 SDK 展示 + 注册 CTA + 登录态感知导航）
 - [已完成] 基础布局：根 layout + AuthProvider + ToastProvider + 主题色变量（藏蓝 #1E3A5F）
 - [已完成] UI 原子组件：Button / Input / Textarea / Select / Card / Badge / Table / Modal / ConfirmModal / Toast（自实现，无外部 UI 库）
@@ -146,7 +146,11 @@ Next.js API（Route Handlers）
 - [已完成] M8.1 接入中心：6 步流程向导（API 下发非硬编码）/ 语言选择（主流+社区分组）/ 代码生成（baseUrl+appKey）/ 测试连接
 - [已完成] M8.1 店铺商品：店铺列表（创建/编辑/删除 Modal）/ 店铺详情 + 商品 CRUD（价格/库存/上下架）
 - [已完成] M8.1 套餐充值：套餐列表（卡片网格+订阅 ConfirmModal）/ 当前有效套餐（剩余额度+到期）/ 订阅记录
-- [规划中] M8.2 代理管理页：下级代理 / 邀请码 / 佣金明细 / 提现申请
+- [已完成] M8.2 代理概览：4 余额卡片（累计佣金/已提现/审核中/可提现）+ 代理信息（层级/佣金比例/状态）+ 快捷入口（profile 为 null 时提示联系上级）
+- [已完成] M8.2 下级代理：三层分段切换（一级/二级/三级）+ 每层表格（邮箱/昵称/层级/佣金比例/累计佣金/状态）+ 三层总数统计
+- [已完成] M8.2 邀请码：列表（code 可复制 + 类型/使用模式/目标层级/已用上限/过期/状态 Badge）+ 创建 Modal（type/targetLevel/usageMode/maxUses/expiresInDays 条件显示）
+- [已完成] M8.2 佣金明细：4 余额卡片 + 提现记录表格（金额/状态/收款账户/申请审核打款时间/驳回原因）+ 状态筛选分页 + 申请提现入口
+- [已完成] M8.2 提现申请：可提现余额卡片 + 提现记录表格 + 发起提现 Modal（amount/payoutType alipay|wxpay|bank/account/name/bank 条件校验）
 - [规划中] M8.3 超管管理页：用户管理 / 业务总览 / 收入明细 / 提现审核 / 工单客服 / 系统配置 / 审计日志 / 2FA / IP 白名单 / 更新面板
 
 ### 3.5 客户端 SDK（10+ 语言）
@@ -334,3 +338,4 @@ jicek-wlyz/
 | 1.0.1 | 2026-07-23 | **构建修复**：解决 `next build` 在"收集页面数据"阶段因模块加载即抛错导致构建失败——Redis 客户端（src/lib/redis/index.ts）改为 Proxy 惰性初始化（构建期不创建连接、不校验环境变量、不抛错，运行时首次调用方法才创建单例并校验 REDIS_HOST/REDIS_PORT，保留铁律 04 显式失败）/ Better Auth 实例（src/lib/auth.ts）改为 Proxy 惰性初始化（构建期不创建实例，运行时首次访问属性才调用 betterAuth() 并校验 BETTER_AUTH_SECRET/BETTER_AUTH_URL，handler/GET/POST/signIn/signUp/signOut/getSession 全部包装为惰性转发函数）/ Next.js 16 适配：middleware.ts → proxy.ts（middleware 文件约定已弃用，统一改名 proxy）+ 函数名 middleware → proxy + 移除 config 中的 runtime: 'nodejs'（Next.js 16 proxy 文件不允许设置 runtime，proxy 默认 Node.js runtime 复用 ioredis）；tsc 自检 0 errors；next build 验证通过（27/27 静态页面生成成功，无 REDIS_HOST / BETTER_AUTH_SECRET / middleware 弃用警告）|
 | 1.1.0 | 2026-07-23 | **M8.0 Web 前端核心 UI 框架完成**：基础布局（根 layout + AuthProvider + ToastProvider + globals.css 主题色变量 藏蓝 #1E3A5F 强制明亮主题，禁暗黑/毛玻璃/emoji/夸张渐变）/ UI 原子组件 7 个（Button primary/secondary/ghost/danger + Input/Textarea/Select + Card/Header/Body/Footer + Badge 6 变体 + Table 斑马纹 + Modal ESC 关闭 + ConfirmModal + Toast Provider 4 语义色）/ 鉴权基础设施（auth-client Better Auth 单例 + http.ts 统一 fetch 封装注入 X-User-Id/X-User-Role 头 + 处理 {code,msg,data,ts,nonce} 响应 + 8408 会话过期回调 + auth-provider useSession 同步 + auth-guard 角色路由隔离）/ 登录注册（Better Auth signIn.email/signUp.email + useSearchParams Suspense 包裹修复 Next.js 16 静态预渲染）/ 三角色仪表盘（RoleDashboard 共用组件 + GET /api/dashboard + 三角色维度卡片）/ 工单 Web 闭环（列表筛选分页 + 创建校验 + 详情回复 + 状态管理：客服标记已解决 / 提交者关闭，权限校验与后端 ticket-service 一致）/ 通知 Web 闭环（列表筛选分页 + 单条/全部标记已读 + 6 种类型语义色）/ 签到 Web 闭环（今日状态 + 立即签到 + 7 天奖励规则可视化 + 最近 30 天记录）/ 共享组件（page-header 通用页头 + common/badges 工单/通知枚举映射 + 时间格式化）/ 顶栏 bug 修复（unread-count API 返回 {count} 而非 {unread}）/ auth-provider refresh bug 修复（refetch 返回 Promise<void>，改用 authClient.getSession 直接拉取最新会话）；tsc 自检 0 errors；next build 验证通过（37/37 路由，新增 5 个静态页 + 1 个动态页 /tickets/[ticketId]，ƒ Proxy (Middleware) 识别正常）|
 | 1.2.0 | 2026-07-23 | **M8.1 开发者管理页完成 + 官网营销页**：官网营销页（/ 首页改为产品介绍页：Hero 区 + 8 项核心特性卡片 + 12 语言 SDK 展示 + 注册 CTA + 顶部登录态感知导航按钮，登录显示"进入控制台"未登录显示"登录/免费注册"）/ 后端 web API 路由层补全（apps/card-keys/devices/cloud-variables/shops/products/packages/user-packages/orders 共 30+ 路由 + service 补 listAppsByDeveloper/getAppById/disableApp/listCards/deleteCard/listDevices/getDeviceById/deleteVariable/getShop/deleteShop/deleteProduct/updatePackage/listAllOrders 方法，手写校验非 zod 对标现有路由风格）/ M8.1 应用管理（列表状态筛选分页 + 创建 clientSecret/privateKey 仅显示一次 + 详情编辑版本/公告/心跳/设备上限/解绑规则 + 重签 + 停用）/ M8.1 卡密管理（列表应用/状态筛选分页 + 批量生成 7 类型同步/异步 + 详情签名/校验位/水印 + 作废/加黑名单）/ M8.1 设备管理（列表应用/状态筛选分页 + 详情机器码/心跳/序列号 + 加黑名单/解绑）/ M8.1 云变量管理（应用选择 + 列表 + Modal 新增编辑 key/value/类型/公开 + 删除，http.ts 新增 put 方法）/ M8.1 APK 注入（任务列表状态筛选分页 + 上传 FormData 注入配置 + 详情 5s 轮询取消 + 下载 blob）/ M8.1 接入中心（6 步流程向导 API 下发非硬编码 + 语言选择主流/社区分组 + 代码生成 baseUrl/appKey + 测试连接）/ M8.1 店铺商品（店铺列表创建/编辑/删除 Modal + 店铺详情商品 CRUD 价格/库存/上下架）/ M8.1 套餐充值（套餐列表卡片网格 + 订阅 ConfirmModal + 当前有效套餐剩余额度到期 + 订阅记录）/ sidebar 移除 developer comingSoon 标记；tsc 自检 0 errors；next build 验证通过（54/54 路由，新增 17 个开发者页面，ƒ Proxy (Middleware) 识别正常）|
+| 1.3.0 | 2026-07-23 | **M8.2 代理管理页完成**：后端 web API 路由层补全（agent 自助 4 路由：profile/balance/subordinates/tree + 提现 2 路由：列表+发起/详情 + 邀请码 3 路由：列表+发起/详情/校验 + 超管 9 路由：代理列表/详情/状态/佣金比例 + 提现列表/审核/驳回/打款 + 邀请码列表，共 18 路由；service 补 listAllAgents/getAgentById/getWithdrawalById/listWithdrawalsWithTotal/listAllInvitations 方法，手写校验非 zod 对标现有路由风格，路由层捕获 service 错误映射到现有错误码 PERMISSION_DENIED/PARAM_FORMAT/PARAM_MISSING/SYSTEM_ERROR）/ M8.2 代理概览（4 余额卡片：累计佣金/已提现/审核中/可提现 + 代理信息层级/佣金比例/状态 + 快捷入口，profile 为 null 时 EmptyState 提示联系上级开通代理身份）/ M8.2 下级代理（三层分段切换：一级/二级/三级 + 每层表格邮箱/昵称/层级/佣金比例/累计佣金/状态 + 三层总数统计 + EmptyState 空态）/ M8.2 邀请码（列表 code 可复制 + 类型/使用模式/目标层级/已用上限/过期/状态 Badge + 创建 Modal type/targetLevel/usageMode/maxUses/expiresInDays 条件显示校验）/ M8.2 佣金明细（4 余额卡片 + 提现记录表格金额/状态/收款账户/申请审核打款时间/驳回原因 + 状态筛选分页 + 申请提现入口跳转）/ M8.2 提现申请（可提现余额卡片 + 提现记录表格 + 发起提现 Modal amount/payoutType alipay|wxpay|bank/account/name/bank 条件校验 + 1 元起校验）/ sidebar 移除 agent comingSoon 标记；tsc 自检 0 errors；next build 验证通过（59/59 路由，新增 5 个代理页面 + 18 个 API 路由，ƒ Proxy (Middleware) 识别正常）|
