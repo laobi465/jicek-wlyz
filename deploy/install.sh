@@ -135,6 +135,50 @@ wait_for_app_healthy() {
     info "应用健康检查通过"
 }
 
+# 校验数据库表是否已建（init.sql 是否生效）
+# 背景：PostgreSQL docker-entrypoint-initdb.d 机制仅在数据卷为空时执行 init.sql，
+# 若 reinstall 保留旧数据卷（无表但非空），init.sql 会被跳过，导致 init-admin
+# 报 "The table public.users does not exist"。此函数在 db 启动后主动校验表数量，
+# 表缺失时自动用 psql 执行 init.sql 补建。
+# 注：init.sql 含 CREATE TABLE（非 IF NOT EXISTS），故仅在 table_count==0 时才执行，
+# 已有表时跳过，保证幂等安全。
+verify_tables_exist() {
+    info "校验数据库表结构..."
+    # 读 .env 里的库名（reinstall/update 时变量可能未在脚本内重新赋值）
+    local db_name
+    db_name="$(grep '^DB_NAME=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
+    db_name="${db_name:-jicek_wlyz}"
+
+    local table_count
+    # db 容器内 postgres 用户走 trust 认证，无需密码；-tAc 输出纯数字
+    table_count="$(docker compose exec -T db \
+        psql -U postgres -d "${db_name}" -tAc \
+        "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null || echo 0)"
+    table_count="$(echo "${table_count}" | tr -d '[:space:]')"
+
+    if [ "${table_count}" -gt 0 ]; then
+        info "数据库表已存在（${table_count} 张表），无需重建"
+        return 0
+    fi
+
+    # 表不存在——自动补建（执行 init.sql）
+    warn "数据库表不存在（init.sql 可能因数据卷非空被跳过），自动补建..."
+    if [ ! -f "${DEPLOY_DIR}/init.sql" ]; then
+        error "init.sql 文件缺失，无法自动补建。请重新运行安装命令以下载 init.sql"
+        exit 1
+    fi
+    # 通过 stdin 将 init.sql 灌入 psql（避免容器内文件路径问题）
+    if docker compose exec -T db psql -U postgres -d "${db_name}" \
+        < "${DEPLOY_DIR}/init.sql" > /tmp/jicek-init.log 2>&1; then
+        info "数据库表补建成功"
+        tail -2 /tmp/jicek-init.log 2>/dev/null || true
+    else
+        error "数据库表补建失败，psql 输出："
+        cat /tmp/jicek-init.log
+        exit 1
+    fi
+}
+
 # ============================================================================
 # 环境准备函数
 # ============================================================================
@@ -306,8 +350,14 @@ prepare_local_build_source() {
 # 8. 启动服务（db 首次启动自动执行 init.sql 建表，compose 编排处理依赖）
 start_services() {
     step "8" "启动服务..."
-    info "启动全部服务（db 首次启动会自动执行 init.sql 建表）..."
-    docker compose up -d
+    info "启动数据层（db 首次启动会自动执行 init.sql 建表）..."
+    # 先启动 db+redis 并等待健康，确保后续校验表结构时 db 可用
+    docker compose up -d db redis
+    wait_for_db_healthy
+    # 校验表是否已建（reinstall 保留旧数据卷时 init.sql 会被跳过，此处自动补建）
+    verify_tables_exist
+    info "启动应用与 APK 注入容器..."
+    docker compose up -d app apk-injector
 }
 
 # 9. 输出并保存部署信息
@@ -421,15 +471,20 @@ cmd_update() {
     # 重新下载编排文件与建表 SQL（保持与最新版本一致）
     download_compose
 
-    step "2" "重启全部服务..."
-    docker compose up -d
+    step "2" "重启数据层并校验表结构..."
+    docker compose up -d db redis
+    wait_for_db_healthy
+    verify_tables_exist
+
+    step "3" "重启应用..."
+    docker compose up -d app apk-injector
     # 读取当前 APP_PORT（.env 可能被用户修改过）
     APP_PORT="$(grep '^APP_PORT=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
     wait_for_app_healthy || exit 1
 
     echo
     info "更新完成！应用已运行在端口 ${APP_PORT}"
-    warn "提示：init.sql 仅在数据库首次初始化时执行，若 schema 有变更需手动处理增量 SQL"
+    warn "提示：init.sql 仅在数据库首次初始化时执行，若 schema 有增量变更需手动处理"
 }
 
 # ============================================================================
