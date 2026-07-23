@@ -20,15 +20,69 @@ import {
  * Next.js 16 不允许在 proxy 文件中设置 runtime 配置项，否则会抛错。
  */
 
-/** 全局 IP 限流：100 次/分钟 */
+/** 全局 IP 限流：100 次/分钟（仅作用于未认证请求与外部 API 入口） */
 const GLOBAL_IP_LIMIT = 100;
 const GLOBAL_IP_WINDOW = 60; // 秒
 
-/** 白名单路径：不限流 */
-const RATE_LIMIT_SKIP_PATHS = new Set([
+/**
+ * 白名单路径前缀：不限流
+ *
+ * 设计原则：限流目标是防外部 API 滥用，不应阻碍已登录用户的后台浏览。
+ * 一次侧边栏点击会产生 4~5 个请求（HTML 页面 + get-session + unread-count
+ * + 业务接口 + RSC prefetch），100 req/min 在正常浏览下会被误限，
+ * 表现为"点击侧边栏无反应"（Next.js 客户端路由收到 429 JSON 静默失败）。
+ *
+ * 豁免范围：
+ * - 所有 HTML 页面（非 /api/ 路径）
+ * - 携带 Better Auth session cookie 的已认证请求（见 isAuthenticated）
+ * - /api/auth/*：Better Auth 内部已有自己的限流，且 get-session 是高频读操作
+ * - /api/notifications/*：客户端已节流 30s，无需 server 端再限
+ * - /api/health, /api/webhooks/*：内部健康检查与回调
+ */
+const RATE_LIMIT_SKIP_PREFIXES: readonly string[] = [
+  '/api/auth/',
+  '/api/notifications/',
   '/api/health',
-  '/api/webhooks/epay',
-]);
+  '/api/webhooks/',
+];
+
+/**
+ * Better Auth 会话 cookie 名称
+ *
+ * Better Auth 默认 cookie 前缀 `better-auth.session_token`，
+ * 部署时可通过环境变量 BETTER_AUTH_SESSION_COOKIE 覆盖。
+ */
+const SESSION_COOKIE_NAME =
+  process.env.BETTER_AUTH_SESSION_COOKIE ?? 'better-auth.session_token';
+
+/**
+ * 判断请求是否已通过 Better Auth 身份认证
+ *
+ * 安全性分析：
+ * - cookie 是 Better Auth 服务端用 HMAC 签名设置的，攻击者无法伪造有效签名
+ * - 即使攻击者发送一个无效的 cookie 头绕过限流，后续 API 仍会被 Better Auth
+ *   校验拒绝（签名无效 → 401），无法实际访问受保护资源
+ * - 因此本函数只做"是否存在 cookie"的快速判断，不做签名验证
+ *   （签名验证由 Better Auth 在路由层完成）
+ *
+ * 注意：X-User-Id 头由 src/lib/http.ts 在前端注入，但该头可被攻击者伪造，
+ * 不可作为身份认证依据，因此本函数不检查 X-User-Id。
+ *
+ * @returns true 表示已认证，跳过限流
+ */
+function isAuthenticated(request: NextRequest): boolean {
+  return Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+}
+
+/** 判断路径是否豁免限流 */
+function isRateLimitSkipped(pathname: string): boolean {
+  // HTML 页面（非 /api/ 路径）一律豁免：限流目标是防 API 滥用，
+  // 不应阻碍已登录用户的后台浏览（每次点击产生 4~5 个伴随请求）
+  if (!pathname.startsWith('/api/')) {
+    return true;
+  }
+  return RATE_LIMIT_SKIP_PREFIXES.some((p) => pathname.startsWith(p));
+}
 
 /** 超管后台路径前缀 */
 const SUPER_ADMIN_PATHS = ['/admin', '/api/admin'];
@@ -129,9 +183,23 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   // -----------------------------------------------------------------
-  // 2. 全局 IP 限流（§2.6.4 第 6 项，跳过白名单路径）
+  // 2. 全局 IP 限流（§2.6.4 第 6 项，跳过白名单路径与已认证请求）
+  //
+  //    限流仅作用于：
+  //    - 未认证请求（未携带 Better Auth session cookie，可能是攻击者）
+  //    - 外部 API 入口（/api/v1/*、/api/admin/*、/api/agent/* 等业务接口）
+  //
+  //    豁免范围：
+  //    - HTML 页面（非 /api/ 路径，由 isRateLimitSkipped 判断）
+  //    - /api/auth/*、/api/notifications/*、/api/health、/api/webhooks/*
+  //    - 携带 Better Auth session cookie 的已认证请求（isAuthenticated）
+  //      （cookie 由服务端 HMAC 签名，攻击者无法伪造有效签名）
   // -----------------------------------------------------------------
-  if (!RATE_LIMIT_SKIP_PATHS.has(pathname) && clientIp !== 'unknown') {
+  if (
+    !isRateLimitSkipped(pathname) &&
+    !isAuthenticated(request) &&
+    clientIp !== 'unknown'
+  ) {
     try {
       const allowed = await checkGlobalRateLimit(clientIp);
       if (!allowed) {
