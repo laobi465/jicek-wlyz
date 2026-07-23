@@ -156,15 +156,46 @@ download_compose() {
 
 # ---------- 8. 拉取镜像并启动 ----------
 start_services() {
-    info "拉取镜像..."
     cd "${DEPLOY_DIR}"
-    if ! docker compose pull; then
-        error "拉取镜像失败，请确认镜像已推送到仓库：${APP_IMAGE}"
-        error "可先在 CI 中执行 docker build 并 docker push 到该镜像地址后重试"
+
+    # 尝试拉取远程镜像（CI 构建推送的）
+    info "尝试拉取远程镜像..."
+    if docker compose pull app 2>/dev/null; then
+        info "远程镜像拉取成功，启动服务..."
+        # 拉取其他服务镜像（db/redis/apk-injector）
+        docker compose pull
+        docker compose up -d
+        return 0
+    fi
+
+    # 远程镜像不可用 → 回退到本地构建模式
+    warn "远程镜像不可用（可能 CI 尚未构建），切换到本地构建模式..."
+    if [ ! -f "${DEPLOY_DIR}/Dockerfile" ]; then
+        info "克隆源码仓库用于本地构建..."
+        git clone --depth 1 https://github.com/laobi465/jicek-wlyz.git /tmp/jicek-wlyz-build 2>/dev/null
+        if [ ! -f /tmp/jicek-wlyz-build/Dockerfile ]; then
+            error "源码克隆失败，请检查网络或手动 clone 仓库后执行 docker compose up -d --build"
+            exit 1
+        fi
+        # 仅复制 Docker 构建所需的文件（保持部署目录整洁）
+        cp /tmp/jicek-wlyz-build/Dockerfile "${DEPLOY_DIR}/"
+        cp -r /tmp/jicek-wlyz-build/src "${DEPLOY_DIR}/"
+        cp -r /tmp/jicek-wlyz-build/public "${DEPLOY_DIR}/"
+        cp /tmp/jicek-wlyz-build/package.json "${DEPLOY_DIR}/"
+        cp /tmp/jicek-wlyz-build/package-lock.json "${DEPLOY_DIR}/" 2>/dev/null || true
+        cp -r /tmp/jicek-wlyz-build/prisma "${DEPLOY_DIR}/"
+        cp /tmp/jicek-wlyz-build/next.config.ts "${DEPLOY_DIR}/"
+        cp /tmp/jicek-wlyz-build/tsconfig.json "${DEPLOY_DIR}/"
+        rm -rf /tmp/jicek-wlyz-build
+        info "源码已就绪，开始本地构建..."
+    fi
+
+    # 本地构建并启动
+    docker compose up -d --build
+    if [ $? -ne 0 ]; then
+        error "本地构建失败，请查看上方错误信息"
         exit 1
     fi
-    info "启动服务..."
-    docker compose up -d
 }
 
 # ---------- 9. 等待健康检查通过 ----------
