@@ -20,19 +20,23 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, PageLoading } from "@/components/layout/page-header";
 import { formatDateTime } from "@/components/common/badges";
-import { get, put, ApiError } from "@/lib/http";
+import { get, post, put, ApiError } from "@/lib/http";
 
 /**
  * 系统配置 /admin/config
  *
  * - GET /api/admin/config?group= → { configs: SystemConfigView[] }
+ * - POST /api/admin/config → { created }（初始化全部预定义配置项空值行）
  * - PUT /api/admin/config/[key] { value } → SystemConfigView（upsert，支持首次创建）
  *
  * value 统一以字符串存储（SystemConfig.value @db.Text）。
  * encrypted=true 的配置在前端以掩码展示，编辑时需输入新值。
  *
- * 配置彩虹易支付：点"新增配置"→ key 填 epay_pid / epay_key / epay_api_url，
- * value 填对应值，保存即可。epay_key 会自动加密存储。
+ * 配置流程：
+ * 1. 首次使用点"初始化默认配置"，一键创建全部 7 个分组（payment/storage/email/
+ *    sms/cdn/backup/general 共 30+ 项）的空值行
+ * 2. 按分组筛选定位配置项，点"编辑"逐项填入实际值（如易支付商户 ID、SMTP 密码等）
+ * 3. 也可通过"新增配置"手动添加 CONFIG_META 未覆盖的自定义键
  */
 
 interface SystemConfigView {
@@ -107,8 +111,8 @@ function ConfigPageInner() {
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState("");
 
-  // 易支付快捷配置项（点"配置易支付"一键填充）
-  const EPAY_QUICK_KEYS = ["epay_pid", "epay_key", "epay_api_url"];
+  // 初始化默认配置（一键创建全部预定义项空值行）
+  const [initLoading, setInitLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -206,6 +210,41 @@ function ConfigPageInner() {
     }
   }
 
+  /**
+   * 初始化默认配置：调用 POST /api/admin/config
+   *
+   * 一键为全部 7 个分组（payment/storage/email/sms/cdn/backup/general）的
+   * 30+ 预定义配置项创建空值行，已存在的不覆盖。创建后超管逐项编辑填值即可。
+   */
+  async function onInitDefaults() {
+    if (!user) return;
+    if (
+      !window.confirm(
+        "将一键创建全部预定义配置项（支付/存储/邮件/短信/CDN/备份/通用共 30+ 项）的空值行，已存在的不会覆盖。是否继续？",
+      )
+    ) {
+      return;
+    }
+    setInitLoading(true);
+    try {
+      const result = await post<{ created: number }>(user, "/api/admin/config");
+      if (result.created > 0) {
+        toast.success(`已初始化 ${result.created} 项配置`);
+      } else {
+        toast.success("所有配置已存在，无需初始化");
+      }
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.danger(err.message);
+      } else {
+        toast.danger("初始化配置失败");
+      }
+    } finally {
+      setInitLoading(false);
+    }
+  }
+
   const total = data?.configs.length ?? 0;
 
   return (
@@ -214,9 +253,19 @@ function ConfigPageInner() {
         title="系统配置"
         subtitle="按分组管理支付 / 存储 / 邮件等系统配置"
         action={
-          <Button size="sm" onClick={openAddModal}>
-            新增配置
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={initLoading}
+              onClick={onInitDefaults}
+            >
+              初始化默认配置
+            </Button>
+            <Button size="sm" onClick={openAddModal}>
+              新增配置
+            </Button>
+          </div>
         }
       />
 
