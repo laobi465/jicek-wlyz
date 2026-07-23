@@ -1,35 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Select, Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
-import {
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  EmptyRow,
-} from "@/components/ui/table";
 import { PageHeader, PageLoading } from "@/components/layout/page-header";
-import { formatDateTime } from "@/components/common/badges";
-import { get, put, ApiError } from "@/lib/http";
+import { get, post, put, ApiError } from "@/lib/http";
 
 /**
- * 系统配置 /admin/config
+ * 系统配置中心 /admin/config
  *
- * - GET /api/admin/config?group= → { configs: SystemConfigView[] }
- * - PUT /api/admin/config/[key] { value } → SystemConfigView
- *
- * value 统一以字符串存储（SystemConfig.value @db.Text）。
- * encrypted=true 的配置在前端以掩码展示，编辑时需输入新值。
+ * 入口页：7 个分组卡片导航，点击进入各分组独立配置页（表单式编辑）。
+ * - GET /api/admin/config → 全部配置（按分组统计数量显示在卡片上）
+ * - POST /api/admin/config → 初始化默认配置（手动触发，v1.7.1 已自动补建）
+ * - PUT /api/admin/config/[key] → 新增自定义配置
  */
 
 interface SystemConfigView {
@@ -47,33 +37,16 @@ interface ListResponse {
   configs: SystemConfigView[];
 }
 
-const GROUP_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "全部分组" },
-  { value: "payment", label: "支付" },
-  { value: "storage", label: "对象存储" },
-  { value: "email", label: "邮件" },
-  { value: "sms", label: "短信" },
-  { value: "cdn", label: "CDN" },
-  { value: "backup", label: "备份" },
-  { value: "general", label: "通用" },
+/** 7 个配置分组定义（与 config-service.ts CONFIG_GROUPS 一致） */
+const GROUPS = [
+  { code: "payment", label: "支付", desc: "彩虹易支付商户 ID / 密钥 / 接口地址", icon: "💳" },
+  { code: "storage", label: "对象存储", desc: "阿里云 OSS / 腾讯云 COS / 七牛云 Kodo", icon: "📦" },
+  { code: "email", label: "邮件", desc: "SMTP 服务器 / 账号 / 密码 / 发件人", icon: "✉️" },
+  { code: "sms", label: "短信", desc: "阿里云 / 腾讯云短信服务配置", icon: "📱" },
+  { code: "cdn", label: "CDN", desc: "CDN 加速域名与鉴权密钥", icon: "🚀" },
+  { code: "backup", label: "备份", desc: "数据库备份周期 / 保留天数 / 存储位置", icon: "💾" },
+  { code: "general", label: "通用", desc: "站点名称 / 地址 / 备案号 / 联系邮箱", icon: "⚙️" },
 ];
-
-const GROUP_LABEL: Record<string, string> = {
-  payment: "支付",
-  storage: "对象存储",
-  email: "邮件",
-  sms: "短信",
-  cdn: "CDN",
-  backup: "备份",
-  general: "通用",
-};
-
-/** 掩码展示加密配置值 */
-function maskValue(value: string, encrypted: boolean): string {
-  if (!encrypted) return value;
-  if (!value) return "-";
-  return "******";
-}
 
 export default function ConfigPage() {
   return (
@@ -87,23 +60,24 @@ function ConfigPageInner() {
   const { user } = useAuth();
   const toast = useToast();
 
-  const [group, setGroup] = useState("");
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 编辑弹窗
-  const [editTarget, setEditTarget] = useState<SystemConfigView | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [editSubmitting, setEditSubmitting] = useState(false);
-  const [editError, setEditError] = useState("");
+  // 初始化默认配置
+  const [initLoading, setInitLoading] = useState(false);
+
+  // 新增自定义配置弹窗
+  const [addOpen, setAddOpen] = useState(false);
+  const [addKey, setAddKey] = useState("");
+  const [addValue, setAddValue] = useState("");
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState("");
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const result = await get<ListResponse>(user, "/api/admin/config", {
-        group: group || undefined,
-      });
+      const result = await get<ListResponse>(user, "/api/admin/config");
       setData(result);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -115,170 +89,191 @@ function ConfigPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [user, group, toast]);
+  }, [user, toast]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function openEditModal(c: SystemConfigView) {
-    setEditTarget(c);
-    // 加密配置编辑时清空，避免误传掩码；非加密配置回填原值
-    setEditValue(c.encrypted ? "" : c.value);
-    setEditError("");
+  /** 统计某分组的配置项数量 */
+  function countByGroup(group: string): number {
+    return data?.configs.filter((c) => c.group === group).length ?? 0;
   }
 
-  async function onConfirmEdit() {
-    if (!user || !editTarget) return;
-    if (!editValue) {
-      setEditError("请输入配置值");
+  /** 统计某分组已填值的配置项数量 */
+  function countFilled(group: string): number {
+    return (
+      data?.configs.filter((c) => c.group === group && c.value).length ?? 0
+    );
+  }
+
+  async function onInitDefaults() {
+    if (!user) return;
+    if (
+      !window.confirm(
+        "将一键创建全部预定义配置项（支付/存储/邮件/短信/CDN/备份/通用共 30+ 项）的空值行，已存在的不会覆盖。是否继续？",
+      )
+    ) {
       return;
     }
-    setEditSubmitting(true);
+    setInitLoading(true);
     try {
-      await put(
-        user,
-        `/api/admin/config/${encodeURIComponent(editTarget.key)}`,
-        { value: editValue },
-      );
-      toast.success("配置已更新");
-      setEditTarget(null);
+      const result = await post<{ created: number }>(user, "/api/admin/config");
+      if (result.created > 0) {
+        toast.success(`已初始化 ${result.created} 项配置`);
+      } else {
+        toast.success("所有配置已存在，无需初始化");
+      }
       await load();
     } catch (err) {
       if (err instanceof ApiError) {
         toast.danger(err.message);
       } else {
-        toast.danger("更新配置失败");
+        toast.danger("初始化配置失败");
       }
     } finally {
-      setEditSubmitting(false);
+      setInitLoading(false);
     }
   }
 
-  const total = data?.configs.length ?? 0;
+  function openAddModal() {
+    setAddKey("");
+    setAddValue("");
+    setAddError("");
+    setAddOpen(true);
+  }
+
+  async function onConfirmAdd() {
+    if (!user) return;
+    if (!addKey) {
+      setAddError("请输入配置键");
+      return;
+    }
+    setAddSubmitting(true);
+    try {
+      await put(
+        user,
+        `/api/admin/config/${encodeURIComponent(addKey)}`,
+        { value: addValue },
+      );
+      toast.success("配置已保存");
+      setAddOpen(false);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setAddError(err.message);
+      } else {
+        setAddError("保存配置失败");
+      }
+    } finally {
+      setAddSubmitting(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="系统配置" subtitle="按分组管理支付 / 存储 / 邮件等系统配置" />
-
-      <Card>
-        <div className="px-5 py-4 border-b border-border flex flex-wrap items-center gap-3">
-          <Select
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
-            className="w-40"
-            aria-label="按分组筛选"
-          >
-            {GROUP_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-          <span className="text-xs text-foreground-muted">共 {total} 条</span>
-        </div>
-
-        {loading ? (
-          <PageLoading />
-        ) : (
-          <Table>
-            <THead>
-              <TR>
-                <TH>配置键</TH>
-                <TH>分组</TH>
-                <TH>当前值</TH>
-                <TH>加密</TH>
-                <TH>说明</TH>
-                <TH>更新时间</TH>
-                <TH>操作</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {data && data.configs.length > 0 ? (
-                data.configs.map((c) => (
-                  <TR key={c.id}>
-                    <TD className="text-foreground font-medium break-all">
-                      {c.key}
-                    </TD>
-                    <TD>
-                      <Badge variant="default">
-                        {GROUP_LABEL[c.group] ?? c.group}
-                      </Badge>
-                    </TD>
-                    <TD className="text-foreground-muted text-xs break-all max-w-xs">
-                      {maskValue(c.value, c.encrypted)}
-                    </TD>
-                    <TD>
-                      <Badge variant={c.encrypted ? "warning" : "default"}>
-                        {c.encrypted ? "加密" : "明文"}
-                      </Badge>
-                    </TD>
-                    <TD className="text-foreground-muted text-xs break-all max-w-xs">
-                      {c.description || "-"}
-                    </TD>
-                    <TD className="text-foreground-muted text-xs whitespace-nowrap">
-                      {formatDateTime(c.updated_at)}
-                    </TD>
-                    <TD className="whitespace-nowrap">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => openEditModal(c)}
-                      >
-                        编辑
-                      </Button>
-                    </TD>
-                  </TR>
-                ))
-              ) : (
-                <EmptyRow colSpan={7} message="暂无配置项" />
-              )}
-            </TBody>
-          </Table>
-        )}
-      </Card>
-
-      <Modal
-        open={!!editTarget}
-        onClose={() => setEditTarget(null)}
-        title="编辑配置"
-        description={
-          editTarget
-            ? `配置键：${editTarget.key}${
-                editTarget.description ? ` · ${editTarget.description}` : ""
-              }`
-            : undefined
+      <PageHeader
+        title="系统配置"
+        subtitle="点击各分组进入独立配置页面，表单式编辑"
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={initLoading}
+              onClick={onInitDefaults}
+            >
+              初始化默认配置
+            </Button>
+            <Button size="sm" onClick={openAddModal}>
+              新增配置
+            </Button>
+          </div>
         }
+      />
+
+      {loading ? (
+        <PageLoading />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {GROUPS.map((g) => {
+            const total = countByGroup(g.code);
+            const filled = countFilled(g.code);
+            return (
+              <Link key={g.code} href={`/admin/config/${g.code}`}>
+                <Card className="hover:border-primary hover:shadow-md transition-all cursor-pointer h-full">
+                  <div className="p-5 flex flex-col gap-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{g.icon}</span>
+                        <div>
+                          <h3 className="text-base font-semibold text-foreground">
+                            {g.label}
+                          </h3>
+                          <p className="text-xs text-foreground-muted mt-0.5">
+                            {g.desc}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">{total} 项配置</Badge>
+                      {filled > 0 && (
+                        <Badge variant="success">已配置 {filled}</Badge>
+                      )}
+                      {total > 0 && filled === 0 && (
+                        <Badge variant="warning">未配置</Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-primary font-medium">
+                      点击配置 →
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 新增自定义配置弹窗 */}
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="新增配置"
+        description="添加 CONFIG_META 未覆盖的自定义配置键"
         footer={
           <>
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setEditTarget(null)}
-              disabled={editSubmitting}
+              onClick={() => setAddOpen(false)}
+              disabled={addSubmitting}
             >
               取消
             </Button>
-            <Button size="sm" loading={editSubmitting} onClick={onConfirmEdit}>
+            <Button size="sm" loading={addSubmitting} onClick={onConfirmAdd}>
               保存
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
-          {editTarget?.encrypted && (
-            <p className="text-xs text-warning">
-              该配置为加密存储，请输入完整新值（原值已掩码，不会回填）。
-            </p>
-          )}
+          <Input
+            id="config-key"
+            label="配置键"
+            placeholder="如 custom_setting_key"
+            value={addKey}
+            onChange={(e) => setAddKey(e.target.value)}
+            error={addError}
+            hint="必填，自定义键将归入 general 分组"
+          />
           <Textarea
-            id="config-value"
+            id="config-add-value"
             label="配置值"
             placeholder="请输入配置值"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            error={editError}
-            hint="必填，统一以字符串存储"
+            value={addValue}
+            onChange={(e) => setAddValue(e.target.value)}
           />
         </div>
       </Modal>
