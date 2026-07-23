@@ -108,6 +108,15 @@ function LoginForm() {
                 立即注册
               </Link>
             </div>
+            <div className="mt-2 text-center text-xs text-foreground-muted">
+              首次部署系统？
+              <Link
+                href="/setup"
+                className="text-primary hover:underline ml-1"
+              >
+                进入安装向导
+              </Link>
+            </div>
           </CardBody>
         </Card>
 

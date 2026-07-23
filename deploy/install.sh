@@ -120,9 +120,12 @@ generate_env() {
     # 密码用 openssl rand -hex 16，认证密钥用 openssl rand -hex 32
     DB_PASSWORD="$(openssl rand -hex 16)"
     REDIS_PASSWORD="$(openssl rand -hex 16)"
-    AUTH_SECRET="$(openssl rand -hex 32)"
+    BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
+    FIELD_ENCRYPTION_KEY="$(openssl rand -hex 32)"
     DB_NAME="jicek_wlyz"
     APP_IMAGE="${APP_IMAGE_DEFAULT}"
+    # 应用外部访问地址（用户部署后可在 .env 中改为实际域名）
+    BETTER_AUTH_URL="http://localhost:${APP_PORT}"
 
     mkdir -p "${DEPLOY_DIR}"
     cat > "${DEPLOY_DIR}/.env" <<EOF
@@ -138,8 +141,11 @@ DB_PASSWORD=${DB_PASSWORD}
 # Redis 配置
 REDIS_PORT=${REDIS_PORT}
 REDIS_PASSWORD=${REDIS_PASSWORD}
-# 认证密钥
-AUTH_SECRET=${AUTH_SECRET}
+# Better Auth 鉴权（auth.ts 读取）
+BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+BETTER_AUTH_URL=${BETTER_AUTH_URL}
+# 敏感字段加密密钥（crypto-field.ts 读取）
+FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
 # 宝塔面板端口（仅记录用）
 BT_PORT=${BT_PORT}
 EOF
@@ -263,10 +269,11 @@ save_and_print_deploy_info() {
 数据库密码   : ${DB_PASSWORD}
 Redis 端口   : ${REDIS_PORT}
 Redis 密码   : ${REDIS_PASSWORD}
-AUTH_SECRET  : ${AUTH_SECRET}
+BETTER_AUTH_SECRET : ${BETTER_AUTH_SECRET}
 宝塔面板端口 : ${BT_PORT}
 --------------------------------------------
 访问地址     : http://${public_ip}:${APP_PORT}
+首次安装     : http://${public_ip}:${APP_PORT}/setup
 宝塔面板     : http://${public_ip}:${BT_PORT}
 ============================================
 EOF

@@ -20,8 +20,15 @@ services:
       HOSTNAME: 0.0.0.0
       # 容器内部通过服务名访问 db / redis，使用容器内部默认端口
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/${DB_NAME:-jicek_wlyz}?schema=public
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
-      AUTH_SECRET: ${AUTH_SECRET}
+      # Better Auth 鉴权（auth.ts 读取，变量名必须与代码一致）
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:${APP_PORT}}
+      # Redis（redis/index.ts 读取 host/port/password，非 url）
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # 敏感字段加密（crypto-field.ts 读取）
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
     depends_on:
       db:
         condition: service_healthy

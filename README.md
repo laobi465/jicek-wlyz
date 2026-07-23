@@ -55,7 +55,7 @@ bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/depl
 2. 检测并安装宝塔面板（已安装则跳过）
 3. 检测并安装 Docker（已安装则跳过）
 4. 端口冲突检测（占用自动 +1）：宝塔端口 / 项目端口 / 数据库端口 / Redis 端口
-5. 随机生成数据库密码、Redis 密码、JWT Secret（`openssl rand`）
+5. 随机生成数据库密码、Redis 密码、Better Auth Secret、字段加密密钥（`openssl rand`）
 6. 拉取预构建 Docker 镜像并启动（不上传源码到服务器）
 7. 输出配置信息并保存至 `/root/jicek-wlyz-deploy.txt`
 
@@ -65,15 +65,18 @@ bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/depl
 
 1. 访问宝塔面板（端口见配置文件）
 2. 在宝塔「Docker」中确认 4 个容器正常运行（app / db / redis / apk-injector）
-3. 访问管理后台（端口见配置文件），进入**首次安装向导**
-4. 设置超级管理员账号与密码
-5. 依次配置：
+3. 访问应用地址 `/setup`（如 `http://服务器IP:端口/setup`），进入**首次安装向导**
+4. 在向导中设置超级管理员账号（用户名 + 邮箱 + 密码）
+5. 使用刚创建的超管账号登录 `/login`，进入超管后台 `/admin`
+6. 在超管后台「系统配置」中依次配置：
    - 彩虹易支付商户号
    - 对象存储（七牛 / 阿里 OSS / Cloudflare R2）
    - 邮件 SMTP
    - 短信服务
    - 套餐定价
    - 数据库备份周期
+
+> 说明：首次安装向导仅在数据库无超管时可用；创建首个超管后该入口自动失效，后续超管由已登录超管在「用户管理」中分配角色。
 
 ### 手动部署（进阶）
 
@@ -87,13 +90,12 @@ cd jicek-wlyz
 # 安装依赖
 npm install
 
-# 配置环境变量
+# 配置环境变量（参考 .env.example，需填 DATABASE_URL/REDIS_*/BETTER_AUTH_*/FIELD_ENCRYPTION_KEY）
 cp .env.example .env
 # 编辑 .env 填写数据库、Redis、密钥等配置
 
 # 数据库迁移
-npx prisma migrate deploy
-npx prisma db seed
+npx prisma migrate dev --name init
 
 # 开发模式启动
 npm run dev
@@ -102,6 +104,8 @@ npm run dev
 npm run build
 npm start
 ```
+
+启动后访问 `http://localhost:3000/setup` 进入首次安装向导创建超管账号。
 
 ### Docker Compose 部署
 

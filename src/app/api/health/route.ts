@@ -43,12 +43,14 @@ export async function GET(): Promise<NextResponse> {
     };
   }
 
-  // 3. 关键环境变量检查
+  // 3. 关键环境变量检查（与代码实际读取的变量名一致）
   const requiredEnvVars = [
     'DATABASE_URL',
     'REDIS_HOST',
     'REDIS_PORT',
-    'JWT_SECRET',
+    'BETTER_AUTH_SECRET',
+    'BETTER_AUTH_URL',
+    'FIELD_ENCRYPTION_KEY',
   ];
   const missingEnvVars = requiredEnvVars.filter((v) => !process.env[v]);
   checks.envVars = {
