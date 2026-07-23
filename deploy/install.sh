@@ -263,7 +263,11 @@ generate_env() {
     FIELD_ENCRYPTION_KEY="$(openssl rand -hex 32)"
     DB_NAME="jicek_wlyz"
     APP_IMAGE="${APP_IMAGE_DEFAULT}"
-    BETTER_AUTH_URL="http://localhost:${APP_PORT}"
+    # BETTER_AUTH_URL 必须用实际访问地址（公网 IP），否则 Better Auth 跨站校验
+    # 会因 Origin 头与 baseURL 不匹配而拒绝登录（"无效来源"）
+    local public_ip
+    public_ip="$(get_public_ip)"
+    BETTER_AUTH_URL="http://${public_ip}:${APP_PORT}"
 
     mkdir -p "${DEPLOY_DIR}"
     cat > "${DEPLOY_DIR}/.env" <<EOF

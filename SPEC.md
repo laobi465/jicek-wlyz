@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.6.1 ｜ 状态：修复 reinstall 旧数据卷导致 init.sql 跳过——新增表结构校验自愈 ｜ 最后更新：2026-07-23
+> 版本：1.6.2 ｜ 状态：修复登录"无效来源"——BETTER_AUTH_URL 改用公网 IP ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -50,6 +50,7 @@
 | 1.5.6 | 修复远程拉取模式 migrate 构建失败：1.5.5 在远程 app 镜像拉取成功时直接构建 migrate，但部署目录只有 docker-compose.yml + .env，无 Dockerfile/源码，docker compose build migrate 报 `failed to read dockerfile: open Dockerfile: no such file or directory`。修复：prepare_image 将 `prepare_local_build_source` 调用提前到 pull 之前——无论远程拉取还是本地构建都先下载源码（幂等：已有 Dockerfile 则跳过），保证 migrate 构建时 Dockerfile 在场 | 已完成 |
 | 1.6.0 | **重构建表方案——彻底删除 migrate 镜像，改用 init.sql + PostgreSQL docker-entrypoint-initdb.d 标准机制**：背景——1.5.3~1.5.6 连续 4 次修复建表问题（standalone 缺 prisma CLI 依赖 effect / 缺 Dockerfile / 远程拉取需源码），migrate 镜像方案过于复杂且不可靠。根因认识：① 建表只需 prisma CLI（命令行工具），其依赖 effect 等未被 standalone 追踪 ② init-admin 只用 PrismaClient（运行时库），被 standalone 追踪，在 runner 容器能正常跑（已验证登录成功）③ PostgreSQL 官方镜像支持 /docker-entrypoint-initdb.d/ 首次初始化自动执行 .sql，零运行时依赖、完全幂等。方案：① 用 `prisma migrate diff --from-empty --to-schema-datamodel --script` 生成 deploy/init.sql（699 行 / 25 张表，含表+索引+外键），提交仓库 ② docker-compose.yml db 服务挂载 `./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro`，db 首次启动自动建表 ③ 删除 migrate service（profiles 隔离那套）④ Dockerfile 删除 migrate 构建阶段，runner 移除 prisma CLI/schema COPY（建表不再依赖 runner）⑤ install.sh 删除 create_db_schema 函数 + prepare_image 远程拉取分支不再下载源码（init.sql 已由 download_compose 下载）+ start_services 简化为 `docker compose up -d`（compose 编排处理依赖）+ cmd_update 移除 migrate 构建与建表步骤 ⑥ download_compose 同时下载 docker-compose.yml + init.sql。优势：远程拉取模式部署目录只需 docker-compose.yml+init.sql+.env 三文件，无需源码；建表零运行时依赖；完全幂等 | 已完成 |
 | 1.6.1 | 修复 reinstall 旧数据卷导致 init.sql 被跳过——新增表结构校验自愈：背景——1.6.0 用 docker-entrypoint-initdb.d 机制建表，但该机制仅在数据卷为空时执行 init.sql。reinstall 保留旧数据卷（之前建表失败遗留的空库但非空卷），init.sql 被跳过，app 启动时 init-admin 报 `The table public.users does not exist`。修复：① 新增 verify_tables_exist 函数——db 启动健康后用 `docker compose exec -T db psql -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"` 查询表数量，>0 则跳过，==0 则自动 `docker compose exec -T db psql < init.sql` 补建（init.sql 含 CREATE TABLE 非 IF NOT EXISTS，故仅在 table_count==0 时执行保证幂等安全）② start_services 改为分步：先 `docker compose up -d db redis` → wait_for_db_healthy → verify_tables_exist → `docker compose up -d app apk-injector`（确保 app 启动前表已就绪）③ cmd_update 同样改为分步并插入 verify_tables_exist ④ 移除未使用的 db_pwd 变量。适用场景：首次安装（init.sql 自动执行）+ reinstall（旧卷跳过 init.sql 但 verify 自动补建）+ update（保留卷表已存在则跳过） | 已完成 |
+| 1.6.2 | 修复登录"无效来源"错误：Better Auth 校验请求 Origin 头与 baseURL（来自 BETTER_AUTH_URL 环境变量）是否匹配，不匹配则拒绝登录返回"无效来源"。原 install.sh generate_env 将 BETTER_AUTH_URL 设为 `http://localhost:${APP_PORT}`，用户通过公网 IP 访问导致浏览器 Origin 头与 baseURL 的 localhost 不匹配被拒。修复：generate_env 改用 get_public_ip 获取公网 IP，BETTER_AUTH_URL 设为 `http://${public_ip}:${APP_PORT}` 使 baseURL 与实际访问地址一致。已部署环境 reinstall/update 保留旧 .env，需手动改 `/opt/jicek-wlyz/.env` 的 BETTER_AUTH_URL 为 `http://<服务器IP>:<端口>` 后 `docker compose restart app` | 已完成 |
 
 ### 1.3 风险与依赖清单
 
