@@ -6,7 +6,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Select, Textarea } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -26,10 +26,13 @@ import { get, put, ApiError } from "@/lib/http";
  * 系统配置 /admin/config
  *
  * - GET /api/admin/config?group= → { configs: SystemConfigView[] }
- * - PUT /api/admin/config/[key] { value } → SystemConfigView
+ * - PUT /api/admin/config/[key] { value } → SystemConfigView（upsert，支持首次创建）
  *
  * value 统一以字符串存储（SystemConfig.value @db.Text）。
  * encrypted=true 的配置在前端以掩码展示，编辑时需输入新值。
+ *
+ * 配置彩虹易支付：点"新增配置"→ key 填 epay_pid / epay_key / epay_api_url，
+ * value 填对应值，保存即可。epay_key 会自动加密存储。
  */
 
 interface SystemConfigView {
@@ -97,6 +100,16 @@ function ConfigPageInner() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState("");
 
+  // 新增配置弹窗
+  const [addOpen, setAddOpen] = useState(false);
+  const [addKey, setAddKey] = useState("");
+  const [addValue, setAddValue] = useState("");
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState("");
+
+  // 易支付快捷配置项（点"配置易支付"一键填充）
+  const EPAY_QUICK_KEYS = ["epay_pid", "epay_key", "epay_api_url"];
+
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -126,6 +139,44 @@ function ConfigPageInner() {
     // 加密配置编辑时清空，避免误传掩码；非加密配置回填原值
     setEditValue(c.encrypted ? "" : c.value);
     setEditError("");
+  }
+
+  function openAddModal() {
+    setAddKey("");
+    setAddValue("");
+    setAddError("");
+    setAddOpen(true);
+  }
+
+  async function onConfirmAdd() {
+    if (!user) return;
+    if (!addKey) {
+      setAddError("请输入配置键（如 epay_pid）");
+      return;
+    }
+    if (!addValue) {
+      setAddError("请输入配置值");
+      return;
+    }
+    setAddSubmitting(true);
+    try {
+      await put(
+        user,
+        `/api/admin/config/${encodeURIComponent(addKey)}`,
+        { value: addValue },
+      );
+      toast.success("配置已保存");
+      setAddOpen(false);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setAddError(err.message);
+      } else {
+        setAddError("保存配置失败");
+      }
+    } finally {
+      setAddSubmitting(false);
+    }
   }
 
   async function onConfirmEdit() {
@@ -159,7 +210,15 @@ function ConfigPageInner() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="系统配置" subtitle="按分组管理支付 / 存储 / 邮件等系统配置" />
+      <PageHeader
+        title="系统配置"
+        subtitle="按分组管理支付 / 存储 / 邮件等系统配置"
+        action={
+          <Button size="sm" onClick={openAddModal}>
+            新增配置
+          </Button>
+        }
+      />
 
       <Card>
         <div className="px-5 py-4 border-b border-border flex flex-wrap items-center gap-3">
@@ -279,6 +338,48 @@ function ConfigPageInner() {
             onChange={(e) => setEditValue(e.target.value)}
             error={editError}
             hint="必填，统一以字符串存储"
+          />
+        </div>
+      </Modal>
+
+      {/* 新增配置弹窗 */}
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="新增配置"
+        description="配置彩虹易支付：依次新增 epay_pid / epay_key / epay_api_url 三个键"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAddOpen(false)}
+              disabled={addSubmitting}
+            >
+              取消
+            </Button>
+            <Button size="sm" loading={addSubmitting} onClick={onConfirmAdd}>
+              保存
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Input
+            id="config-key"
+            label="配置键"
+            placeholder="如 epay_pid / epay_key / epay_api_url"
+            value={addKey}
+            onChange={(e) => setAddKey(e.target.value)}
+            error={addError}
+            hint="必填，易支付三个键：epay_pid(商户ID) / epay_key(商户密钥,自动加密) / epay_api_url(接口地址)"
+          />
+          <Textarea
+            id="config-add-value"
+            label="配置值"
+            placeholder="请输入配置值"
+            value={addValue}
+            onChange={(e) => setAddValue(e.target.value)}
           />
         </div>
       </Modal>

@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.6.6 ｜ 状态：修复 MASTER_KEY 未配置——install.sh/docker-compose/.env.example 三处补齐 ｜ 最后更新：2026-07-23
+> 版本：1.6.7 ｜ 状态：实现彩虹易支付后台配置——config upsert + 加密 + 新增配置 UI ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -55,6 +55,7 @@
 | 1.6.4 | 修复更新面板 `git: not found`：update-service `getCurrentVersion()` 执行 `git rev-parse HEAD` 在 Docker runner 镜像（无 git 二进制 + 无 .git 目录）抛错导致 `/api/admin/update/check` 500、更新面板顶部红条报错。修复（update-service.ts）：① `getCurrentVersion()` 三级降级不抛错——`DEPLOY_VERSION` 环境变量 → `git rev-parse HEAD` → `"unknown"` ② 新增 `isGitAvailable()` ③ `executeUpdate()`/`rollback()` 开头检测 Docker 模式，git 不可用直接抛明确错误指引到 `bash install.sh update`/`reinstall`，避免 git pull/npm install/prisma migrate 一连串神秘失败 | 已完成 |
 | 1.6.5 | 修复移动端左上角汉堡菜单点击无反应：topbar.tsx 汉堡 `&#9776;` 是占位 `<span>` 无 onClick（注释"M8.0 暂不实现抽屉"），sidebar.tsx `hidden md:flex` 窄屏下侧边栏完全隐藏，用户只看到点了没反应的图标。修复（三文件联动）：① layout.tsx 加 `mobileNavOpen` state ② topbar.tsx `<span>` → `<button onClick={onMenuClick}>` ③ sidebar.tsx 提取 `SidebarContent` 复用，移动端抽屉 `fixed inset-0 z-50`（遮罩点击关闭 + `w-64` 左滑入），点击导航项自动关闭。三角色共享组件一并修复 | 已完成 |
 | 1.6.6 | 修复 `MASTER_KEY 未配置`：app-service/card-key-service/epay-service 读取 MASTER_KEY（经 SHA-256 派生 AES-256 密钥，加密 RSA 私钥/卡密水印/易支付密钥），但 install.sh generate_env 漏生成 + docker-compose.yml 漏传递 + .env.example 漏列出。修复：① install.sh 加 `MASTER_KEY=$(openssl rand -hex 32)` 生成并写入 .env ② docker-compose.yml app environment 加 `MASTER_KEY: ${MASTER_KEY}` ③ .env.example 加说明。已部署环境需手动在 .env 追加 `MASTER_KEY=<openssl rand -hex 32>` 后 `docker compose restart app` | 已完成 |
+| 1.6.7 | 实现彩虹易支付后台配置：epay-service.getEpayConfig 已实现从 SystemConfig 读 epay_pid/epay_key/epay_api_url，但 init.sql 未预置配置行 + updateSystemConfig 用 prisma.update 非 upsert 无法首次创建 + epay_key 存读不对称（存明文但 decryptEpayKey 期望密文）+ 配置页无新增入口。修复：① config-service.ts 加 encryptConfigValue()（MASTER_KEY AES-256-CBC 加密，格式 ivHex:cipherBase64）+ CONFIG_META 元信息 + updateSystemConfig 改 upsert + encrypted=true 自动加密 ② config/page.tsx 加"新增配置"按钮 + Modal。超管在 /admin/config 点新增配置填 3 个键即可。依赖 v1.6.6 MASTER_KEY | 已完成 |
 
 ### 1.3 风险与依赖清单
 
