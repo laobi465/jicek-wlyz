@@ -1,6 +1,6 @@
 # jicek-wlyz 项目文档（PROJECT.md）
 
-> 版本：0.7.0 ｜ 状态：M6 运营能力已完成，待进入 M7 安全加固上线 ｜ 最后更新：2026-07-23
+> 版本：1.0.0 ｜ 状态：M7 安全加固完成，正式上线版本 ｜ 最后更新：2026-07-23
 > 维护规则：任何变更按 SPEC.md 联动更新，版本号语义化递增
 
 ---
@@ -119,6 +119,13 @@ Next.js API（Route Handlers）
 - [已完成] **GitHub 自动更新面板**（当前版本/最新版本/更新日志/立即更新/版本历史/一键回滚）
 - [已完成] **新版本弹窗提醒**（WebSocket 实时推送，立即更新/稍后提醒）
 - [已完成] 工单客服处理（回复自动置为 in_progress / 标记 resolved / 关闭 closed）
+- [已完成] **全局限流中间件**（middleware.ts，IP 令牌桶 100 req/min，§2.6.4 第 6 项）
+- [已完成] **HTTP 安全头**（HSTS / X-Frame-Options / CSP / X-Content-Type-Options，§2.6.4 第 17-18 项）
+- [已完成] **2FA 双因子验证**（TOTP RFC 6238 + 备份码 + 超管/代理强制，§2.6.4 第 10 项）
+- [已完成] **超管 IP 白名单**（全局环境变量 + 用户个人白名单 + CIDR 支持，§2.6.4 第 11 项）
+- [已完成] **统一审计日志**（audit-service + 30+ 操作类型 + 敏感字段脱敏，§2.6.4 第 12 项）
+- [已完成] **敏感字段加密**（AES-256-GCM + scrypt 密钥派生，手机号/真实姓名加密存储，§2.6.4 第 14 项）
+- [已完成] **健康检查 API**（/api/health，数据库 + Redis + 环境变量检查，供负载均衡探针）
 
 ### 3.4 客户端 SDK（10+ 语言）
 - [已完成] Python SDK（cryptography 库 + 完整 6 actions + ECDHE-PFS）
@@ -301,3 +308,4 @@ jicek-wlyz/
 | 0.5.0 | 2026-07-23 | **M4 完成**：接入生态落地——6 主流 SDK（Python/Java/PHP/Node.js/Go/易语言，全部实现 verify_rsa/auth/use/unbind/check_update/heartbeat 6 actions + RSA-2048 签名 + AES-256-CBC 加密 + ECDHE-PFS）/ 6 小众语言示例（gglua/andlua/autojs/shell/anjian/htmljs，社区贡献）/ 接入中心向导（access-service + 3 API 路由：languages/generate-code/test-connection + 6 步流程引导）/ 协议规范文档（docs/api/protocol.md，6 actions 详细规范 + 加密细节 + 错误码 + 12 语言 SDK 对照）；tsc 自检 0 errors |
 | 0.6.0 | 2026-07-23 | **M5 完成**：APK 注入落地——在线注入服务（apk-injection-service + 4 API 路由：upload/tasks 列表/详情/下载 + 202 异步 + 任务取消）/ 安全完整性服务（apk-integrity-service：APK magic number 校验 + SHA-256 常量时间比较 + apktool 参数白名单防命令注入 + 路径穿越防护 + SDK 版本/包名白名单 + InjectionConfig 15+ 特性开关）/ BullMQ 异步 Worker（沙箱 mkdtemp 隔离 + apktool d/b + smali 注入 WlyzSdkEntry/WlyzAntiDebug/WlyzIntegrityCheck + assets/wlyz_config.json + apksigner 签名 + 5 分钟超时 + 优雅关闭）/ 命令行工具（tools/apk-injector/cli.ts：inject/verify/sign/help 4 子命令）/ 扩展 prisma schema 新增 ApkInjectionTask 模型 + 8 个 APK 错误码（8001-8008）/ 文档 docs/apk-injection.md（9 章节：安全策略 21 项 + API + CLI + Worker 部署 + Docker Compose）；对象存储上传/下载明确抛错待接入（铁律 04）；tsc 自检 0 errors |
 | 0.7.0 | 2026-07-23 | **M6 完成**：运营能力落地——工单系统（ticket-service + 5 API 路由：创建/列表/详情/回复/状态流转 + 工单编号 TK+YYYYMMDD+随机串 + 状态机 open→in_progress→resolved→closed + 权限校验仅提交者或超管 + 客服回复自动置 in_progress）/ 通知中心（notification-service + 3 API 路由：列表/标记已读/未读数 + 6 种类型 ticket/payment/withdrawal/system/apk/agent + 单条/全部已读 + 内部 sendNotification 接口供其他模块调用）/ 每日签到（checkin-service + 2 API 路由：签到/记录 + 连续签到奖励 0.10-0.50 元 7 天封顶 + UTC+8 时区 + 唯一约束防重复 + 事务保证签到记录与余额原子入账）/ 数据看板（dashboard-service + 1 API 路由：按角色分发开发者/代理/超管三维度统计 + 并行 aggregate 查询）/ 扩展 prisma schema 新增 Notification + CheckIn 模型 + 8 个错误码 8101-8302；tsc 自检 0 errors |
+| 1.0.0 | 2026-07-23 | **M7 完成 + 正式上线**：安全加固落地——全局限流中间件（middleware.ts + Redis 滑动窗口 100 req/min/IP + §2.6.4 第 6 项 + 白名单路径豁免 + Redis 降级放行）/ HTTP 安全头（HSTS max-age=31536000 + X-Frame-Options=DENY + X-Content-Type-Options=nosniff + Referrer-Policy + Permissions-Policy + CSP 严格策略 default-src 'self'，§2.6.4 第 17-18 项）/ 统一审计日志服务（audit-service + 30+ AuditAction 枚举 + 敏感字段自动脱敏 password/token/secret/keystore + IP/UA 采集 + 不可篡改仅追加 + 超管查询 API，§2.6.4 第 12 项）/ 敏感字段加密（crypto-field AES-256-GCM + scrypt 密钥派生 N=16384 + 随机 IV + AuthTag 防篡改 + 密文格式 base64(iv\|ciphertext\|authTag) + 脱敏展示 phone/name/email，§2.6.4 第 14 项）/ 2FA 双因子验证（two-factor-service TOTP RFC 6238 HMAC-SHA1 6 位 30 秒窗口 + Base32 编解码 + 常量时间比较防时序攻击 + ±1 窗口容错 + 10 个一次性备份码 + 超管/代理强制 + 3 API 路由 status/enable/disable/verify，§2.6.4 第 10 项）/ 超管 IP 白名单（ip-whitelist-service 全局环境变量 + 用户个人白名单 + IPv4/IPv4 CIDR 匹配 + 中间件层校验，§2.6.4 第 11 项）/ 健康检查 API（/api/health 数据库 + Redis + 环境变量检查 + 200/503 状态码供负载均衡探针）/ 新增 9 个错误码 1003/8401-8408（限流/2FA/IP白名单/字段加解密/会话过期）+ PERMISSION_DENIED 通用权限码；tsc 自检 0 errors |

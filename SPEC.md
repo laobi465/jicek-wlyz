@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：0.7.0 ｜ 状态：M6 运营能力已完成，待进入 M7 安全加固上线 ｜ 最后更新：2026-07-23
+> 版本：1.0.0 ｜ 状态：M7 安全加固完成，正式上线版本 ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -18,7 +18,7 @@
 | M4 | 接入生态 | 6 种主流 SDK + 协议规范文档 + 小众语言示例 + 接入中心向导 | 已完成 |
 | M5 | APK 注入 | 在线注入工具 + 命令行工具 + SDK 自签名校验 + 反调试 | 已完成 |
 | M6 | 运营能力 | 工单系统 + 数据看板 + 签到 + 通知 | 已完成 |
-| M7 | 安全加固 + 上线 | 签名防篡改全链路 + 限流 + 审计日志 + 上线 | 未开始 |
+| M7 | 安全加固 + 上线 | 签名防篡改全链路 + 限流 + 审计日志 + 上线 | 已完成 |
 
 ### 1.2 版本路线图
 
@@ -31,8 +31,8 @@
 | 0.4.0 | M3 商业化 | 已完成 |
 | 0.5.0 | M4 接入生态 | 已完成 |
 | 0.6.0 | M5 APK 注入 | 已完成 |
-| 0.7.0 | M6 运营能力 | 当前 |
-| 1.0.0 | M7 安全加固 + 正式上线 | 规划 |
+| 0.7.0 | M6 运营能力 | 已完成 |
+| 1.0.0 | M7 安全加固 + 正式上线 | 当前 |
 
 ### 1.3 风险与依赖清单
 
@@ -400,3 +400,4 @@ release/<版本>     # 发版分支
 | 0.5.0 | 2026-07-23 | **M4 完成**：接入生态落地——6 主流 SDK（Python/Java/PHP/Node.js/Go/易语言，全部实现 6 actions + RSA-2048 签名 + AES-256-CBC 加密 + ECDHE-PFS）/ 6 小众语言示例（gglua/andlua/autojs/shell/anjian/htmljs，社区贡献）/ 接入中心向导（access-service + 3 API 路由：languages/generate-code/test-connection + 6 步流程引导 + 12 语言模板生成 + 连接测试）/ 协议规范文档（docs/api/protocol.md，6 actions 详细规范 + 加密细节 + 错误码 + 12 语言 SDK 对照）；tsc 自检 0 errors |
 | 0.6.0 | 2026-07-23 | **M5 完成**：APK 注入落地——在线注入服务（apk-injection-service + 4 API 路由：upload/tasks 列表/详情/下载 + 202 异步 + 任务取消 + 权限校验）/ 安全完整性服务（apk-integrity-service：APK magic number 校验 PK\x03\x04 + SHA-256 常量时间比较防时序攻击 + apktool 参数白名单防命令注入 + 路径穿越防护 + SDK 版本/包名白名单 + InjectionConfig 15+ 特性开关 + 文件大小 500MB 限制）/ BullMQ 异步 Worker（§2.6.3 第 20 项沙箱 mkdtemp 隔离 + apktool d/b + smali 注入 WlyzSdkEntry/WlyzAntiDebug/WlyzIntegrityCheck + assets/wlyz_config.json + apksigner 签名 + 5 分钟超时 + SIGINT/SIGTERM 优雅关闭）/ 命令行工具（tools/apk-injector/cli.ts：inject/verify/sign/help 4 子命令 + --no-* 反向开关）/ 扩展 prisma schema 新增 ApkInjectionTask 模型（BigInt file_size + status 状态机 pending/processing/success/failed）/ 新增 8 个 APK 错误码 8001-8008 / 文档 docs/apk-injection.md（9 章节：安全策略 21 项 + 在线 API + CLI + 注入后结构 + Worker 部署 + Docker Compose）；对象存储上传/下载明确抛错待接入（铁律 04）；tsc 自检 0 errors |
 | 0.7.0 | 2026-07-23 | **M6 完成**：运营能力落地——工单系统（ticket-service + 5 API 路由：POST 创建/GET 列表/GET 详情/POST 回复/PATCH 状态 + 工单编号 TK+YYYYMMDD+6位随机串防碰撞 + 状态机 open→in_progress→resolved→closed + 权限校验仅提交者或超管 + 客服回复事务性自动置 in_progress + closed 禁止回复 + 内容长度限制 100/5000/2000）/ 通知中心（notification-service + 3 API 路由：GET 列表/POST 标记已读/GET 未读数 + 6 种类型 ticket/payment/withdrawal/system/apk/agent + 单条/全部已读幂等 + 内部 sendNotification 接口供工单/支付/提现模块调用 + 标题/内容长度限制）/ 每日签到（checkin-service + 2 API 路由：POST 签到/GET 状态 + GET 记录 + 连续签到奖励规则 1-6 天 0.10-0.35 元递增 / 7 天及以上 0.50 元封顶 + UTC+8 时区计算 + 唯一约束(user_id, checkin_date)防重复 + 事务保证签到记录与 balance 余额原子入账 + 断签重置连续天数）/ 数据看板（dashboard-service + 1 API 路由：按角色分发 developer/agent/super_admin 三维度 + 开发者看应用/卡密/设备/工单/通知/签到 + 代理看下级/邀请码/佣金/提现 + 超管看全平台用户/业务/收入/工单/提现/APK 注入 + 并行 Promise.all aggregate 查询优化）/ 扩展 prisma schema 新增 Notification + CheckIn 模型（含 @@unique 防重复签到）+ User 关联 + 8 个错误码 8101-8302（工单 4 项 + 通知 1 项 + 签到 2 项）；tsc 自检 0 errors |
+| 1.0.0 | 2026-07-23 | **M7 完成 + 正式上线**：安全加固落地——全局限流中间件（src/middleware.ts + Redis 滑动窗口 zset 实现 100 req/min/IP + §2.6.4 第 6 项 + 白名单路径 /api/health /api/webhooks/epay 豁免 + Redis 不可用降级放行不阻断 + runtime nodejs 复用 ioredis）/ HTTP 安全头（injectSecurityHeaders HSTS max-age=31536000; includeSubDomains; preload + X-Frame-Options=DENY + X-Content-Type-Options=nosniff + Referrer-Policy=strict-origin-when-cross-origin + X-XSS-Protection=1; mode=block + Permissions-Policy geolocation/microphone/camera 禁用 + CSP default-src 'self' script/style 'unsafe-inline' img 'self' data: https: frame-ancestors 'none'，§2.6.4 第 17-18 项）/ 统一审计日志服务（audit-service + AuditAction 30+ 枚举覆盖 user/card/agent/withdrawal/config/apk/update/2fa/ticket + sanitizeDetails 递归脱敏 password/password_hash/client_secret/rsa_private_key/token/access_token/refresh_token/two_factor_secret/keystore_password/key_password + writeAuditLog 写入失败不阻断主流程 + listAuditLogs 超管查询 API，§2.6.4 第 12 项）/ 敏感字段加密（crypto-field AES-256-GCM + scrypt 密钥派生 N=16384 从 FIELD_ENCRYPTION_KEY 派生 32 字节 + 每条记录随机 12 字节 IV + 16 字节 AuthTag 防篡改 + 密文格式 base64(iv\|ciphertext\|authTag) + decryptFieldWithMask 脱敏展示 phone 138\*\*\*\*8888 / name 张\*\* / email z\*\*\*@example.com + isEncryptedField 兼容旧明文数据，§2.6.4 第 14 项）/ 2FA 双因子验证（two-factor-service TOTP RFC 6238 HMAC-SHA1 6 位数字 30 秒窗口 + Base32 编解码 + generateTotp Dynamic Truncation + verifyTotp 常量时间比较 timingSafeEqual 防时序攻击 + ±1 窗口容错时钟偏差 + generateBackupCodes 10 个 8 位一次性备份码 + enableTwoFactor/disableTwoFactor/verifyTwoFactorCode + 超管/代理 requireTwoFactor 强制 + 密钥 AES 加密存储 + 3 API 路由 GET 状态/POST 开启/DELETE 关闭 + POST verify，§2.6.4 第 10 项）/ 超管 IP 白名单（ip-whitelist-service 全局环境变量 SUPER_ADMIN_IP_WHITELIST + 用户个人 User.ip_whitelist + isValidIpFormat IPv4/IPv4 CIDR 校验 + isIpInWhitelist CIDR 掩码匹配 32 位整数 + checkSuperAdminIpAccess 综合校验 + 中间件层 SUPER_ADMIN_PATHS /admin /api/admin 拦截，§2.6.4 第 11 项）/ 健康检查 API（/api/health GET 数据库 prisma.$queryRaw SELECT 1 + Redis ping + 4 个关键环境变量 DATABASE_URL/REDIS_HOST/REDIS_PORT/JWT_SECRET + 200 healthy/503 unhealthy + 供负载均衡/监控探针）/ 新增错误码 PERMISSION_DENIED=1003 通用权限 + 8401 RATE_LIMIT_EXCEEDED + 8402-8404 TWO_FACTOR + 8405 IP_WHITELIST_FORBIDDEN + 8406-8407 FIELD 加解密 + 8408 SESSION_EXPIRED；tsc 自检 0 errors |

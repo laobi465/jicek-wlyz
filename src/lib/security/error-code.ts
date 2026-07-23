@@ -13,6 +13,8 @@ export enum ErrorCode {
   PARAM_MISSING = 1001,
   /** 参数格式错误 */
   PARAM_FORMAT = 1002,
+  /** 无权限访问 */
+  PERMISSION_DENIED = 1003,
   /** 应用不存在 */
   APP_NOT_FOUND = 2001,
   /** AppKey 无效 */
@@ -79,6 +81,22 @@ export enum ErrorCode {
   CHECKIN_ALREADY = 8301,
   /** 签到记录不存在 */
   CHECKIN_NOT_FOUND = 8302,
+  /** 请求超限（全局限流） */
+  RATE_LIMIT_EXCEEDED = 8401,
+  /** 2FA 未开启（超管/代理强制） */
+  TWO_FACTOR_REQUIRED = 8402,
+  /** 2FA 验证码错误 */
+  TWO_FACTOR_INVALID = 8403,
+  /** 2FA 密钥未配置 */
+  TWO_FACTOR_NOT_CONFIGURED = 8404,
+  /** 超管 IP 不在白名单 */
+  IP_WHITELIST_FORBIDDEN = 8405,
+  /** 敏感字段解密失败 */
+  FIELD_DECRYPT_FAILED = 8406,
+  /** 敏感字段加密失败 */
+  FIELD_ENCRYPT_FAILED = 8407,
+  /** 会话已过期，请重新登录 */
+  SESSION_EXPIRED = 8408,
 }
 
 /** 统一响应体 */
@@ -115,6 +133,7 @@ function errorCodeMsg(code: ErrorCode): string {
     [ErrorCode.SUCCESS]: '成功',
     [ErrorCode.PARAM_MISSING]: '参数缺失',
     [ErrorCode.PARAM_FORMAT]: '参数格式错误',
+    [ErrorCode.PERMISSION_DENIED]: '无权限访问',
     [ErrorCode.APP_NOT_FOUND]: '应用不存在',
     [ErrorCode.APP_KEY_INVALID]: 'AppKey 无效',
     [ErrorCode.SIGNATURE_INVALID]: '签名校验失败',
@@ -148,6 +167,14 @@ function errorCodeMsg(code: ErrorCode): string {
     [ErrorCode.NOTIFICATION_NOT_FOUND]: '通知不存在',
     [ErrorCode.CHECKIN_ALREADY]: '今日已签到',
     [ErrorCode.CHECKIN_NOT_FOUND]: '签到记录不存在',
+    [ErrorCode.RATE_LIMIT_EXCEEDED]: '请求过于频繁，请稍后再试',
+    [ErrorCode.TWO_FACTOR_REQUIRED]: '请先开启两步验证',
+    [ErrorCode.TWO_FACTOR_INVALID]: '两步验证码错误',
+    [ErrorCode.TWO_FACTOR_NOT_CONFIGURED]: '两步验证未配置',
+    [ErrorCode.IP_WHITELIST_FORBIDDEN]: '当前 IP 不在白名单',
+    [ErrorCode.FIELD_DECRYPT_FAILED]: '敏感字段解密失败',
+    [ErrorCode.FIELD_ENCRYPT_FAILED]: '敏感字段加密失败',
+    [ErrorCode.SESSION_EXPIRED]: '会话已过期，请重新登录',
   };
   return map[code] ?? '未知错误';
 }
