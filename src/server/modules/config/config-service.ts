@@ -66,13 +66,48 @@ export interface SystemConfigView {
 }
 
 /**
+ * 确保所有预定义配置项存在（首次访问自动补建空值行，幂等）
+ *
+ * 超管打开 /admin/config 页面时自动调用：若数据库中配置项总数小于
+ * CONFIG_META 预定义数量，则逐项检查并补建缺失的空值行。
+ * 这样超管无需手动点"初始化默认配置"按钮，一进来就能看到全部 32 项
+ * 配置并直接编辑。
+ *
+ * 不写审计日志（自动行为，非用户操作）；已存在的不覆盖。
+ */
+async function ensureDefaultConfigsExist(): Promise<void> {
+  const totalKeys = Object.keys(CONFIG_META).length;
+  const existingCount = await prisma.systemConfig.count();
+  if (existingCount >= totalKeys) {
+    return; // 配置项已齐全，无需补建
+  }
+  for (const [key, meta] of Object.entries(CONFIG_META)) {
+    const existing = await prisma.systemConfig.findUnique({ where: { key } });
+    if (existing) continue;
+    await prisma.systemConfig.create({
+      data: {
+        key,
+        value: '',
+        group: meta.group,
+        encrypted: meta.encrypted,
+        description: meta.description,
+      },
+    });
+  }
+}
+
+/**
  * 按分组查询系统配置列表
+ *
+ * 查询前自动补建缺失的预定义配置项（确保超管一打开页面就能看到
+ * 全部 7 分组 32 项配置并直接编辑，无需手动初始化）。
  *
  * @param group 配置分组，不传则返回全部
  */
 export async function listSystemConfigs(
   group?: string,
 ): Promise<SystemConfigView[]> {
+  await ensureDefaultConfigsExist();
   const configs = await prisma.systemConfig.findMany({
     where: group ? { group } : undefined,
     orderBy: [{ group: 'asc' }, { key: 'asc' }],
