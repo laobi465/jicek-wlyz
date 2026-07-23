@@ -31,6 +31,8 @@ export default function SetupPage() {
 
   const [checking, setChecking] = useState(true);
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+  /** 后端检查失败时的错误信息（独立于 needsSetup，避免误报"已初始化"） */
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +44,9 @@ export default function SetupPage() {
   useEffect(() => {
     let cancelled = false;
     fetch("/api/setup", { credentials: "include" })
-      .then((r) => r.json())
-      .then((data: { code: number; data?: SetupStatus }) => {
+      .then(async (r) => {
+        const data: { code: number; msg?: string; data?: SetupStatus } =
+          await r.json();
         if (cancelled) return;
         if (data.code === 0 && data.data) {
           setNeedsSetup(data.data.needsSetup);
@@ -52,14 +55,14 @@ export default function SetupPage() {
             router.replace("/login");
           }
         } else {
-          setNeedsSetup(false);
-          toast.danger("无法检查初始化状态，请检查服务是否正常");
+          // 后端返回错误（如数据库未连接/未建表），显示真实错误而非误报"已初始化"
+          const msg = data.msg ?? "无法检查初始化状态";
+          setErrorMsg(msg);
         }
       })
       .catch(() => {
         if (cancelled) return;
-        setNeedsSetup(false);
-        toast.danger("网络错误，无法检查初始化状态");
+        setErrorMsg("网络错误，无法连接服务器");
       })
       .finally(() => {
         if (!cancelled) setChecking(false);
@@ -67,7 +70,8 @@ export default function SetupPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -115,6 +119,37 @@ export default function SetupPage() {
         <div className="flex flex-col items-center gap-3">
           <span className="inline-block w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-foreground-muted">正在检查系统初始化状态</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 后端检查失败：显示真实错误 + 重试按钮（不再误报"系统已初始化"）
+  if (errorMsg) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background-subtle px-4">
+        <div className="w-full max-w-md text-center">
+          <div className="mb-4 p-4 rounded-md bg-accent-red/10 border border-accent-red/30">
+            <p className="text-sm text-foreground font-medium mb-2">
+              无法检查初始化状态
+            </p>
+            <p className="text-xs text-foreground-muted break-all">{errorMsg}</p>
+          </div>
+          <p className="text-xs text-foreground-muted mb-4">
+            请确认数据库已启动并已执行表结构初始化（prisma migrate / db push），然后重试。
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => window.location.reload()}
+            className="w-full"
+          >
+            重新检查
+          </Button>
+          <div className="mt-4 text-center text-sm text-foreground-muted">
+            <Link href="/login" className="text-primary hover:underline">
+              返回登录
+            </Link>
+          </div>
         </div>
       </div>
     );
