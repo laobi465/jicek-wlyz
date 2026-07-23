@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.0.1 ｜ 状态：M7 安全加固完成，正式上线版本（构建修复） ｜ 最后更新：2026-07-23
+> 版本：1.1.0 ｜ 状态：M8.0 Web 前端核心 UI 框架完成 ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -19,6 +19,9 @@
 | M5 | APK 注入 | 在线注入工具 + 命令行工具 + SDK 自签名校验 + 反调试 | 已完成 |
 | M6 | 运营能力 | 工单系统 + 数据看板 + 签到 + 通知 | 已完成 |
 | M7 | 安全加固 + 上线 | 签名防篡改全链路 + 限流 + 审计日志 + 上线 | 已完成 |
+| M8 | Web 前端 UI | 三角色 Web 界面（开发者/代理/超管）+ 登录注册 + 仪表盘 + 工单 + 通知 + 签到 | 进行中 |
+
+> M8 拆分：M8.0 核心 UI 框架（本次交付：基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 共享工单/通知/签到闭环）→ M8.1 开发者管理页（应用/卡密/设备/云变量/APK 注入/接入中心/店铺/套餐）→ M8.2 代理管理页（下级/邀请码/提现）→ M8.3 超管管理页（用户/业务/收入/提现审核/系统配置/审计/2FA/IP 白名单/更新面板）。
 
 ### 1.2 版本路线图
 
@@ -33,7 +36,8 @@
 | 0.6.0 | M5 APK 注入 | 已完成 |
 | 0.7.0 | M6 运营能力 | 已完成 |
 | 1.0.0 | M7 安全加固 + 正式上线 | 已完成 |
-| 1.0.1 | 构建修复（Next.js 16 proxy 适配 + redis/auth 惰性初始化） | 当前 |
+| 1.0.1 | 构建修复（Next.js 16 proxy 适配 + redis/auth 惰性初始化） | 已完成 |
+| 1.1.0 | M8.0 Web 前端核心 UI 框架（基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 工单/通知/签到闭环） | 已完成 |
 
 ### 1.3 风险与依赖清单
 
@@ -331,6 +335,105 @@ release/<版本>     # 发版分支
 - 移动端：单列布局，导航折叠为汉堡菜单
 - PC 端：多列布局，侧边导航
 
+### 2.8 前端架构规范（M8）
+
+#### 技术选型（已锁定）
+- 框架：Next.js 16 App Router（Server Components 优先，交互页用 `'use client'`）
+- 样式：TailwindCSS v4（`@import "tailwindcss"` + `@theme inline`），不引入 shadcn/ui
+- 字体：Geist Sans（已在 [layout.tsx](file:///workspace/src/app/layout.tsx) 加载）
+- 鉴权客户端：`createAuthClient` from `better-auth/react`（`useSession()` hook）
+- 状态：React 19 内置（Context + useState/useEffect），不引入 Redux/Zustand
+- HTTP：原生 `fetch`，封装统一 `request()` 处理 `{ code, msg, data, ts, nonce }` 响应体
+- 图标：禁用（铁律 03 第 1 条），用文字 + CSS 几何元素表达
+
+#### 目录结构（M8 新增）
+```
+src/
+├── app/
+│   ├── (auth)/                 # 未登录路由组
+│   │   ├── login/page.tsx
+│   │   └── register/page.tsx
+│   ├── (dashboard)/            # 已登录路由组（带鉴权守卫 + 侧边栏布局）
+│   │   ├── layout.tsx          # 守卫 + 侧边栏 + 顶栏 + 通知红点
+│   │   ├── dashboard/page.tsx  # 按角色重定向到子仪表盘
+│   │   ├── tickets/            # 共享工单模块
+│   │   │   ├── page.tsx
+│   │   │   ├── new/page.tsx
+│   │   │   └── [ticketId]/page.tsx
+│   │   ├── notifications/page.tsx
+│   │   ├── checkin/page.tsx
+│   │   ├── developer/          # 开发者专属（M8.1 扩展）
+│   │   │   └── page.tsx        # 开发者仪表盘
+│   │   ├── agent/              # 代理专属（M8.2 扩展）
+│   │   │   └── page.tsx        # 代理仪表盘
+│   │   └── admin/              # 超管专属（M8.3 扩展）
+│   │       └── page.tsx        # 超管仪表盘
+│   ├── layout.tsx              # 根布局（字体 + AuthProvider + ToastProvider）
+│   └── page.tsx                # 首页：已登录跳 /dashboard，未登录跳 /login
+├── components/
+│   ├── ui/                     # UI 原子组件（不引外部库）
+│   │   ├── button.tsx
+│   │   ├── input.tsx
+│   │   ├── card.tsx
+│   │   ├── badge.tsx
+│   │   ├── table.tsx
+│   │   ├── modal.tsx
+│   │   └── toast.tsx
+│   ├── layout/
+│   │   ├── sidebar.tsx         # 角色感知侧边栏
+│   │   ├── topbar.tsx          # 顶栏（用户菜单 + 通知红点 + 退出）
+│   │   └── page-header.tsx     # 通用页头（PageHeader / PageLoading / EmptyState）
+│   ├── common/
+│   │   └── badges.tsx          # 工单/通知枚举映射 + StatusBadge/PriorityBadge/CategoryBadge + 时间格式化
+│   ├── dashboard/
+│   │   └── role-dashboard.tsx  # 三角色共用仪表盘
+│   └── auth/
+│       ├── auth-guard.tsx      # 路由组守卫（角色路由隔离）
+│       └── auth-provider.tsx   # useSession 同步 + 会话过期回调 + refresh + signOut
+├── lib/
+│   ├── auth-client.ts          # Better Auth 客户端单例
+│   ├── http.ts                 # 统一 fetch 封装（X-User-Id / X-User-Role 头注入）
+│   └── ...（已有后端模块不动）
+```
+
+#### 鉴权流程
+1. 用户在 `/login` 通过 Better Auth 客户端 `signIn.email({ email, password })` → 后端 `/api/auth/[...all]` 校验 → set-cookie `better-auth.session_token`
+2. 客户端 `useSession()` 获取 `session.user`，admin 插件注入 `user.role`
+3. 业务 API 鉴权契约（已有后端不变）：请求头 `X-User-Id` + `X-User-Role`，由 `lib/http.ts` 统一注入
+4. 鉴权守卫 `<AuthGuard>`：在 `(dashboard)` 路由组 layout 中包裹，未登录 → 重定向 `/login`，已登录按 role 渲染对应侧边栏
+
+#### 路由规范
+- 未登录可访问：`/login`, `/register`, `/api/auth/[...all]`, `/api/health`
+- 已登录可访问：`/(dashboard)/**`
+- 角色路由隔离：`/developer/**` 仅 developer 可见，`/agent/**` 仅 agent 可见，`/admin/**` 仅 super_admin 可见（守卫校验，越权访问重定向到 `/dashboard`）
+- 首页 `/`：服务端根据 cookie session 重定向到 `/dashboard` 或 `/login`
+
+#### 响应体处理
+所有业务 API 返回 `{ code, msg, data, ts, nonce }`（[error-code.ts](file:///workspace/src/lib/security/error-code.ts)）。`lib/http.ts` 统一处理：
+- `code === 0` → 返回 `data`
+- `code === 8408` (SESSION_EXPIRED) → 跳 `/login`
+- 其他 → throw `{ code, msg }`，由调用方 Toast 提示
+
+#### M8.0 交付范围（本次，已交付 v1.1.0）
+| 模块 | 页面 | 对接 API |
+|---|---|---|
+| 基础 | 根 layout + 主题 + AuthProvider + ToastProvider | — |
+| 基础 | UI 原子组件（Button/Input/Textarea/Select/Card/Badge/Table/Modal/ConfirmModal/Toast） | — |
+| 基础 | lib/auth-client + lib/http + 共享 page-header + common/badges | — |
+| 基础 | 鉴权守卫 + 角色侧边栏 + 顶栏（通知红点轮询） | — |
+| 登录 | /login（useSearchParams Suspense 包裹修复静态预渲染） | POST /api/auth/[...all] (sign-in/email) |
+| 注册 | /register | POST /api/auth/[...all] (sign-up/email) |
+| 仪表盘 | /dashboard（角色重定向） | GET /api/dashboard |
+| 仪表盘 | /developer, /agent, /admin（共用 RoleDashboard） | GET /api/dashboard |
+| 工单 | /tickets, /tickets/new, /tickets/[id] | GET/POST /api/tickets/** |
+| 通知 | /notifications | GET /api/notifications, POST /api/notifications/read |
+| 签到 | /checkin | GET/POST /api/checkin, GET /api/checkin/records |
+
+#### M8.1 / M8.2 / M8.3 待实现（后续会话）
+- M8.1 开发者管理页：应用 / 卡密 / 设备 / 云变量 / APK 注入 / 接入中心 / 店铺 / 套餐充值
+- M8.2 代理管理页：下级代理 / 邀请码 / 佣金明细 / 提现申请
+- M8.3 超管管理页：用户管理 / 业务总览 / 收入明细 / 提现审核 / 工单客服 / 系统配置 / 审计日志 / 2FA / IP 白名单 / 更新面板
+
 ---
 
 ## 3. 开发流程（Workflow）
@@ -403,3 +506,4 @@ release/<版本>     # 发版分支
 | 0.7.0 | 2026-07-23 | **M6 完成**：运营能力落地——工单系统（ticket-service + 5 API 路由：POST 创建/GET 列表/GET 详情/POST 回复/PATCH 状态 + 工单编号 TK+YYYYMMDD+6位随机串防碰撞 + 状态机 open→in_progress→resolved→closed + 权限校验仅提交者或超管 + 客服回复事务性自动置 in_progress + closed 禁止回复 + 内容长度限制 100/5000/2000）/ 通知中心（notification-service + 3 API 路由：GET 列表/POST 标记已读/GET 未读数 + 6 种类型 ticket/payment/withdrawal/system/apk/agent + 单条/全部已读幂等 + 内部 sendNotification 接口供工单/支付/提现模块调用 + 标题/内容长度限制）/ 每日签到（checkin-service + 2 API 路由：POST 签到/GET 状态 + GET 记录 + 连续签到奖励规则 1-6 天 0.10-0.35 元递增 / 7 天及以上 0.50 元封顶 + UTC+8 时区计算 + 唯一约束(user_id, checkin_date)防重复 + 事务保证签到记录与 balance 余额原子入账 + 断签重置连续天数）/ 数据看板（dashboard-service + 1 API 路由：按角色分发 developer/agent/super_admin 三维度 + 开发者看应用/卡密/设备/工单/通知/签到 + 代理看下级/邀请码/佣金/提现 + 超管看全平台用户/业务/收入/工单/提现/APK 注入 + 并行 Promise.all aggregate 查询优化）/ 扩展 prisma schema 新增 Notification + CheckIn 模型（含 @@unique 防重复签到）+ User 关联 + 8 个错误码 8101-8302（工单 4 项 + 通知 1 项 + 签到 2 项）；tsc 自检 0 errors |
 | 1.0.0 | 2026-07-23 | **M7 完成 + 正式上线**：安全加固落地——全局限流代理（src/proxy.ts + Redis 滑动窗口 zset 实现 100 req/min/IP + §2.6.4 第 6 项 + 白名单路径 /api/health /api/webhooks/epay 豁免 + Redis 不可用降级放行不阻断 + proxy 默认 Node.js runtime 复用 ioredis）/ HTTP 安全头（injectSecurityHeaders HSTS max-age=31536000; includeSubDomains; preload + X-Frame-Options=DENY + X-Content-Type-Options=nosniff + Referrer-Policy=strict-origin-when-cross-origin + X-XSS-Protection=1; mode=block + Permissions-Policy geolocation/microphone/camera 禁用 + CSP default-src 'self' script/style 'unsafe-inline' img 'self' data: https: frame-ancestors 'none'，§2.6.4 第 17-18 项）/ 统一审计日志服务（audit-service + AuditAction 30+ 枚举覆盖 user/card/agent/withdrawal/config/apk/update/2fa/ticket + sanitizeDetails 递归脱敏 password/password_hash/client_secret/rsa_private_key/token/access_token/refresh_token/two_factor_secret/keystore_password/key_password + writeAuditLog 写入失败不阻断主流程 + listAuditLogs 超管查询 API，§2.6.4 第 12 项）/ 敏感字段加密（crypto-field AES-256-GCM + scrypt 密钥派生 N=16384 从 FIELD_ENCRYPTION_KEY 派生 32 字节 + 每条记录随机 12 字节 IV + 16 字节 AuthTag 防篡改 + 密文格式 base64(iv\|ciphertext\|authTag) + decryptFieldWithMask 脱敏展示 phone 138\*\*\*\*8888 / name 张\*\* / email z\*\*\*@example.com + isEncryptedField 兼容旧明文数据，§2.6.4 第 14 项）/ 2FA 双因子验证（two-factor-service TOTP RFC 6238 HMAC-SHA1 6 位数字 30 秒窗口 + Base32 编解码 + generateTotp Dynamic Truncation + verifyTotp 常量时间比较 timingSafeEqual 防时序攻击 + ±1 窗口容错时钟偏差 + generateBackupCodes 10 个 8 位一次性备份码 + enableTwoFactor/disableTwoFactor/verifyTwoFactorCode + 超管/代理 requireTwoFactor 强制 + 密钥 AES 加密存储 + 3 API 路由 GET 状态/POST 开启/DELETE 关闭 + POST verify，§2.6.4 第 10 项）/ 超管 IP 白名单（ip-whitelist-service 全局环境变量 SUPER_ADMIN_IP_WHITELIST + 用户个人 User.ip_whitelist + isValidIpFormat IPv4/IPv4 CIDR 校验 + isIpInWhitelist CIDR 掩码匹配 32 位整数 + checkSuperAdminIpAccess 综合校验 + 中间件层 SUPER_ADMIN_PATHS /admin /api/admin 拦截，§2.6.4 第 11 项）/ 健康检查 API（/api/health GET 数据库 prisma.$queryRaw SELECT 1 + Redis ping + 4 个关键环境变量 DATABASE_URL/REDIS_HOST/REDIS_PORT/JWT_SECRET + 200 healthy/503 unhealthy + 供负载均衡/监控探针）/ 新增错误码 PERMISSION_DENIED=1003 通用权限 + 8401 RATE_LIMIT_EXCEEDED + 8402-8404 TWO_FACTOR + 8405 IP_WHITELIST_FORBIDDEN + 8406-8407 FIELD 加解密 + 8408 SESSION_EXPIRED；tsc 自检 0 errors |
 | 1.0.1 | 2026-07-23 | **构建修复**：解决 `next build` 在"收集页面数据（Collecting page data）"阶段因模块加载即抛错导致构建失败——Redis 客户端（src/lib/redis/index.ts）改为 Proxy 惰性初始化（构建期不创建连接、不校验环境变量、不抛错；运行时首次调用方法才创建单例并校验 REDIS_HOST/REDIS_PORT，保留铁律 04 显式失败；现有 `redis.xxx()` 调用点零改动）/ Better Auth 实例（src/lib/auth.ts）改为 Proxy 惰性初始化（构建期不创建实例；运行时首次访问属性才调用 betterAuth() 并校验 BETTER_AUTH_SECRET/BETTER_AUTH_URL；handler/GET/POST/signIn/signUp/signOut/getSession 全部包装为惰性转发函数；现有调用点零改动）/ Next.js 16 适配：src/middleware.ts → src/proxy.ts（middleware 文件约定已弃用，统一改名 proxy）+ 函数名 middleware → proxy + 移除 config 中的 runtime: 'nodejs'（Next.js 16 proxy 文件不允许设置 runtime，设置会抛错；proxy 默认 Node.js runtime 复用 ioredis）；tsc 自检 0 errors；next build 验证通过（27/27 静态页面生成成功，无 REDIS_HOST / BETTER_AUTH_SECRET / middleware 弃用警告，proxy 被正确识别为 ƒ Proxy (Middleware)）|
+| 1.1.0 | 2026-07-23 | **M8.0 Web 前端核心 UI 框架完成**：基础布局（src/app/globals.css 主题色变量：背景 #FFFFFF/#F8FAFC + 文字 #1E293B/#64748B + 主色藏蓝 #1E3A5F + 辅助色 accent-blue/green/amber + danger + border #E2E8F0 + @theme inline 映射 + 强制 color-scheme: light 禁暗黑 + focus-visible 主色细环 + 极简滚动条）/ 根 layout（src/app/layout.tsx：lang="zh-CN" + AuthProvider + ToastProvider 包裹 + metadata 标题"网络验证 SaaS 控制台"）/ UI 原子组件 7 个（components/ui/：Button 4 变体 primary/secondary/ghost/danger + 3 尺寸 sm/md/lg + loading spinner / Input + Textarea + Select label/error/hint / Card + CardHeader + CardBody + CardFooter / Badge 6 变体 default/primary/success/warning/danger/info / Table + THead/TBody/TR/TH/TD/EmptyRow 斑马纹 #F8FAFC hover / Modal ESC 关闭 + 滚动锁 + 3 尺寸 sm/md/lg + ConfirmModal danger 变体 / ToastProvider 4 语义色 info/success/warning/danger + 3s 自动消失 + 右上角 viewport + 进入动画）/ 鉴权基础设施（lib/auth-client.ts createAuthClient 单例 + SessionUser 类型含 role / lib/http.ts request<T> 统一封装注入 X-User-Id/X-User-Role 头 + 处理 {code,msg,data,ts,nonce} 响应 + code===0 返回 data + code===8408 触发 sessionExpiredHandler + ApiError 携带 code/msg + get/post/patch/del 便捷方法 + withQuery 查询参数拼接 / components/auth/auth-provider.tsx useSession 同步 + 注册会话过期回调 setUser(null) + window.location /login?reason=expired + refresh 通过 authClient.getSession({query:{disableCookieCache:true}}) 直接拉取最新会话（修复 refetch 返回 Promise<void> 无法获取数据的 bug）+ signOutAndRedirect / components/auth/auth-guard.tsx allow prop 角色路由隔离 + 未登录重定向 /login + 角色不匹配重定向 ROLE_HOME + loading spinner）/ 登录注册（src/app/(auth)/login/page.tsx + register/page.tsx：Better Auth signIn.email/signUp.email + 默认 developer 角色 + 密码 8 字符 + 确认密码校验 + useSearchParams Suspense 包裹修复 Next.js 16 静态预渲染要求 + ?reason=expired 显示会话过期提示）/ 三角色仪表盘（src/app/(dashboard)/dashboard/page.tsx 服务端 auth.api.getSession 重定向 + developer/agent/admin/page.tsx AuthGuard allow 角色守卫 + components/dashboard/role-dashboard.tsx 共用组件 GET /api/dashboard + DeveloperDashboard/AgentDashboard/SuperAdminDashboard 三个 render + StatCard/StatItem/PageHeader/CheckinCard 共享子组件）/ 工单 Web 闭环（src/app/(dashboard)/tickets/page.tsx 列表 status/category 筛选 + limit/offset 分页 20/页 + 工单号/标题/类型/优先级/状态/创建时间/操作表格 + EmptyRow 空态 + 上一页/下一页 + tickets/new/page.tsx 创建表单 title 1-100 + content 1-5000 + category bug/feature/billing/other + priority low/medium/high/urgent + 字符计数 hint + tickets/[ticketId]/page.tsx 详情工单信息卡 + StatusBadge/PriorityBadge/CategoryBadge + 回复列表 is_staff 高亮 primary-subtle + 回复表单 2000 字符限制 + closed 禁止回复 + 状态管理 ConfirmModal：客服标记已解决 resolved / 提交者关闭 closed，权限校验与后端 ticket-service 一致）/ 通知 Web 闭环（src/app/(dashboard)/notifications/page.tsx 列表 isRead 筛选 + 分页 + 6 种类型语义色 Badge + 未读项 primary-subtle 高亮 + 红点标记 + 单条标为已读 + 全部标记已读按钮 + 本地状态更新避免整页刷新）/ 签到 Web 闭环（src/app/(dashboard)/checkin/page.tsx 今日签到状态 Badge + 立即签到按钮已签到禁用 + 7 天奖励规则可视化网格 active/isToday 高亮 + 第 7 天封顶提示 + 最近 30 天签到记录 Table 日期/连续天数/奖励金额/签到时间 + EmptyState 空态）/ 共享组件（components/layout/page-header.tsx PageHeader + PageLoading + EmptyState / components/common/badges.tsx TicketStatus/Category/Priority + NotificationType 枚举 + StatusBadge/PriorityBadge/CategoryBadge + TICKET_STATUS_LABEL/CATEGORY_LABEL/PRIORITY_LABEL + NOTIFICATION_TYPE_LABEL + formatDateTime/formatDate）/ 顶栏 bug 修复（components/layout/topbar.tsx：unread-count API 返回 {count} 而非 {unread}，原代码 data?.unread 永远为 0，修复为 data?.count）；tsc 自检 0 errors；next build 验证通过（37/37 路由，新增 5 个静态页 /checkin /notifications /tickets /tickets/new /login + 1 个动态页 /tickets/[ticketId]，ƒ Proxy (Middleware) 识别正常，无 REDIS_HOST/BETTER_AUTH_SECRET 抛错）|

@@ -1,6 +1,6 @@
 # jicek-wlyz 项目文档（PROJECT.md）
 
-> 版本：1.0.1 ｜ 状态：M7 安全加固完成，正式上线版本（构建修复） ｜ 最后更新：2026-07-23
+> 版本：1.1.0 ｜ 状态：M8.0 Web 前端核心 UI 框架完成 ｜ 最后更新：2026-07-23
 > 维护规则：任何变更按 SPEC.md 联动更新，版本号语义化递增
 
 ---
@@ -23,7 +23,7 @@
 ### 1.4 技术栈（已锁定，不再讨论替代方案）
 | 层 | 选型 |
 |---|---|
-| 前端 | Next.js 16 App Router + TypeScript + TailwindCSS + shadcn/ui |
+| 前端 | Next.js 16 App Router + TypeScript + TailwindCSS v4（自实现 UI 组件库，无外部 UI 库） |
 | 后端 | Next.js Route Handlers / Server Actions + REST API |
 | ORM | Prisma |
 | 主库 | PostgreSQL 16 |
@@ -127,7 +127,21 @@ Next.js API（Route Handlers）
 - [已完成] **敏感字段加密**（AES-256-GCM + scrypt 密钥派生，手机号/真实姓名加密存储，§2.6.4 第 14 项）
 - [已完成] **健康检查 API**（/api/health，数据库 + Redis + 环境变量检查，供负载均衡探针）
 
-### 3.4 客户端 SDK（10+ 语言）
+### 3.4 Web 控制台（M8.0 已完成）
+- [已完成] 基础布局：根 layout + AuthProvider + ToastProvider + 主题色变量（藏蓝 #1E3A5F）
+- [已完成] UI 原子组件：Button / Input / Textarea / Select / Card / Badge / Table / Modal / ConfirmModal / Toast（自实现，无外部 UI 库）
+- [已完成] 鉴权基础设施：Better Auth 客户端（useSession）+ HTTP 封装（X-User-Id / X-User-Role 头注入 + 8408 会话过期跳登录）+ AuthGuard 角色守卫
+- [已完成] 登录 / 注册：Better Auth signIn.email / signUp.email，注册默认 developer 角色
+- [已完成] 角色仪表盘：开发者 / 代理 / 超管三角色共用 RoleDashboard 组件，对接 GET /api/dashboard
+- [已完成] 侧边栏 + 顶栏：角色感知侧边栏（通用入口 + 角色专属入口）+ 顶栏通知红点轮询（30s）+ 退出确认
+- [已完成] 工单 Web 闭环：列表（状态/类型筛选 + 分页）/ 创建（标题/内容/类型/优先级校验）/ 详情（回复列表 + 回复表单 + 状态管理：客服标记已解决 / 提交者关闭）
+- [已完成] 通知 Web 闭环：列表（已读/未读筛选 + 分页）+ 单条/全部标记已读
+- [已完成] 签到 Web 闭环：今日签到状态 + 立即签到 + 7 天奖励规则可视化 + 最近 30 天签到记录
+- [规划中] M8.1 开发者管理页：应用 / 卡密 / 设备 / 云变量 / APK 注入 / 接入中心 / 店铺 / 套餐充值
+- [规划中] M8.2 代理管理页：下级代理 / 邀请码 / 佣金明细 / 提现申请
+- [规划中] M8.3 超管管理页：用户管理 / 业务总览 / 收入明细 / 提现审核 / 工单客服 / 系统配置 / 审计日志 / 2FA / IP 白名单 / 更新面板
+
+### 3.5 客户端 SDK（10+ 语言）
 - [已完成] Python SDK（cryptography 库 + 完整 6 actions + ECDHE-PFS）
 - [已完成] Java SDK（JDK crypto + Gson + 完整 6 actions + ECDHE-PFS）
 - [已完成] PHP SDK（openssl + curl 扩展 + 完整 6 actions + ECDHE-PFS）
@@ -309,4 +323,5 @@ jicek-wlyz/
 | 0.6.0 | 2026-07-23 | **M5 完成**：APK 注入落地——在线注入服务（apk-injection-service + 4 API 路由：upload/tasks 列表/详情/下载 + 202 异步 + 任务取消）/ 安全完整性服务（apk-integrity-service：APK magic number 校验 + SHA-256 常量时间比较 + apktool 参数白名单防命令注入 + 路径穿越防护 + SDK 版本/包名白名单 + InjectionConfig 15+ 特性开关）/ BullMQ 异步 Worker（沙箱 mkdtemp 隔离 + apktool d/b + smali 注入 WlyzSdkEntry/WlyzAntiDebug/WlyzIntegrityCheck + assets/wlyz_config.json + apksigner 签名 + 5 分钟超时 + 优雅关闭）/ 命令行工具（tools/apk-injector/cli.ts：inject/verify/sign/help 4 子命令）/ 扩展 prisma schema 新增 ApkInjectionTask 模型 + 8 个 APK 错误码（8001-8008）/ 文档 docs/apk-injection.md（9 章节：安全策略 21 项 + API + CLI + Worker 部署 + Docker Compose）；对象存储上传/下载明确抛错待接入（铁律 04）；tsc 自检 0 errors |
 | 0.7.0 | 2026-07-23 | **M6 完成**：运营能力落地——工单系统（ticket-service + 5 API 路由：创建/列表/详情/回复/状态流转 + 工单编号 TK+YYYYMMDD+随机串 + 状态机 open→in_progress→resolved→closed + 权限校验仅提交者或超管 + 客服回复自动置 in_progress）/ 通知中心（notification-service + 3 API 路由：列表/标记已读/未读数 + 6 种类型 ticket/payment/withdrawal/system/apk/agent + 单条/全部已读 + 内部 sendNotification 接口供其他模块调用）/ 每日签到（checkin-service + 2 API 路由：签到/记录 + 连续签到奖励 0.10-0.50 元 7 天封顶 + UTC+8 时区 + 唯一约束防重复 + 事务保证签到记录与余额原子入账）/ 数据看板（dashboard-service + 1 API 路由：按角色分发开发者/代理/超管三维度统计 + 并行 aggregate 查询）/ 扩展 prisma schema 新增 Notification + CheckIn 模型 + 8 个错误码 8101-8302；tsc 自检 0 errors |
 | 1.0.0 | 2026-07-23 | **M7 完成 + 正式上线**：安全加固落地——全局限流代理（proxy.ts + Redis 滑动窗口 100 req/min/IP + §2.6.4 第 6 项 + 白名单路径豁免 + Redis 降级放行）/ HTTP 安全头（HSTS max-age=31536000 + X-Frame-Options=DENY + X-Content-Type-Options=nosniff + Referrer-Policy + Permissions-Policy + CSP 严格策略 default-src 'self'，§2.6.4 第 17-18 项）/ 统一审计日志服务（audit-service + 30+ AuditAction 枚举 + 敏感字段自动脱敏 password/token/secret/keystore + IP/UA 采集 + 不可篡改仅追加 + 超管查询 API，§2.6.4 第 12 项）/ 敏感字段加密（crypto-field AES-256-GCM + scrypt 密钥派生 N=16384 + 随机 IV + AuthTag 防篡改 + 密文格式 base64(iv\|ciphertext\|authTag) + 脱敏展示 phone/name/email，§2.6.4 第 14 项）/ 2FA 双因子验证（two-factor-service TOTP RFC 6238 HMAC-SHA1 6 位 30 秒窗口 + Base32 编解码 + 常量时间比较防时序攻击 + ±1 窗口容错 + 10 个一次性备份码 + 超管/代理强制 + 3 API 路由 status/enable/disable/verify，§2.6.4 第 10 项）/ 超管 IP 白名单（ip-whitelist-service 全局环境变量 + 用户个人白名单 + IPv4/IPv4 CIDR 匹配 + 中间件层校验，§2.6.4 第 11 项）/ 健康检查 API（/api/health 数据库 + Redis + 环境变量检查 + 200/503 状态码供负载均衡探针）/ 新增 9 个错误码 1003/8401-8408（限流/2FA/IP白名单/字段加解密/会话过期）+ PERMISSION_DENIED 通用权限码；tsc 自检 0 errors |
-| 1.0.1 | 2026-07-23 | **构建修复**：解决 `next build` 在"收集页面数据"阶段因模块加载即抛错导致构建失败——Redis 客户端（src/lib/redis/index.ts）改为 Proxy 惰性初始化（构建期不创建连接、不校验环境变量、不抛错，运行时首次调用方法才创建单例并校验 REDIS_HOST/REDIS_PORT，保留铁律 04 显式失败）/ Better Auth 实例（src/lib/auth.ts）改为 Proxy 惰性初始化（构建期不创建实例，运行时首次访问属性才调用 betterAuth() 并校验 BETTER_AUTH_SECRET/BETTER_AUTH_URL，handler/GET/POST/signIn/signUp/signOut/getSession 全部包装为惰性转发函数）/ Next.js 16 适配：middleware.ts → proxy.ts（middleware 文件约定已弃用，统一改名 proxy）+ 函数名 middleware → proxy + 移除 config 中的 runtime: 'nodejs'（Next.js 16 proxy 文件不允许设置 runtime，默认 Node.js runtime 复用 ioredis）；tsc 自检 0 errors；next build 验证通过（27/27 静态页面生成成功，无 REDIS_HOST / BETTER_AUTH_SECRET / middleware 弃用警告）|
+| 1.0.1 | 2026-07-23 | **构建修复**：解决 `next build` 在"收集页面数据"阶段因模块加载即抛错导致构建失败——Redis 客户端（src/lib/redis/index.ts）改为 Proxy 惰性初始化（构建期不创建连接、不校验环境变量、不抛错，运行时首次调用方法才创建单例并校验 REDIS_HOST/REDIS_PORT，保留铁律 04 显式失败）/ Better Auth 实例（src/lib/auth.ts）改为 Proxy 惰性初始化（构建期不创建实例，运行时首次访问属性才调用 betterAuth() 并校验 BETTER_AUTH_SECRET/BETTER_AUTH_URL，handler/GET/POST/signIn/signUp/signOut/getSession 全部包装为惰性转发函数）/ Next.js 16 适配：middleware.ts → proxy.ts（middleware 文件约定已弃用，统一改名 proxy）+ 函数名 middleware → proxy + 移除 config 中的 runtime: 'nodejs'（Next.js 16 proxy 文件不允许设置 runtime，proxy 默认 Node.js runtime 复用 ioredis）；tsc 自检 0 errors；next build 验证通过（27/27 静态页面生成成功，无 REDIS_HOST / BETTER_AUTH_SECRET / middleware 弃用警告）|
+| 1.1.0 | 2026-07-23 | **M8.0 Web 前端核心 UI 框架完成**：基础布局（根 layout + AuthProvider + ToastProvider + globals.css 主题色变量 藏蓝 #1E3A5F 强制明亮主题，禁暗黑/毛玻璃/emoji/夸张渐变）/ UI 原子组件 7 个（Button primary/secondary/ghost/danger + Input/Textarea/Select + Card/Header/Body/Footer + Badge 6 变体 + Table 斑马纹 + Modal ESC 关闭 + ConfirmModal + Toast Provider 4 语义色）/ 鉴权基础设施（auth-client Better Auth 单例 + http.ts 统一 fetch 封装注入 X-User-Id/X-User-Role 头 + 处理 {code,msg,data,ts,nonce} 响应 + 8408 会话过期回调 + auth-provider useSession 同步 + auth-guard 角色路由隔离）/ 登录注册（Better Auth signIn.email/signUp.email + useSearchParams Suspense 包裹修复 Next.js 16 静态预渲染）/ 三角色仪表盘（RoleDashboard 共用组件 + GET /api/dashboard + 三角色维度卡片）/ 工单 Web 闭环（列表筛选分页 + 创建校验 + 详情回复 + 状态管理：客服标记已解决 / 提交者关闭，权限校验与后端 ticket-service 一致）/ 通知 Web 闭环（列表筛选分页 + 单条/全部标记已读 + 6 种类型语义色）/ 签到 Web 闭环（今日状态 + 立即签到 + 7 天奖励规则可视化 + 最近 30 天记录）/ 共享组件（page-header 通用页头 + common/badges 工单/通知枚举映射 + 时间格式化）/ 顶栏 bug 修复（unread-count API 返回 {count} 而非 {unread}）/ auth-provider refresh bug 修复（refetch 返回 Promise<void>，改用 authClient.getSession 直接拉取最新会话）；tsc 自检 0 errors；next build 验证通过（37/37 路由，新增 5 个静态页 + 1 个动态页 /tickets/[ticketId]，ƒ Proxy (Middleware) 识别正常）|

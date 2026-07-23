@@ -15,12 +15,13 @@
 - **商业化能力**：发卡业务 + 彩虹易支付 + 套餐包月 + 提现审核
 - **安全加固**：签名防篡改 + 限流风控 + 审计日志 + WAF + 2FA
 - **GitHub 自动更新**：Webhook 触发 → 自动备份 → 拉取部署 → 失败回滚
+- **Web 控制台**：三角色（开发者/代理/超管）RBAC 控制台，Better Auth 鉴权 + 工单/通知/签到闭环（M8.0 已完成）
 
 ## 技术栈
 
 | 层 | 选型 |
 |---|---|
-| 前端 | Next.js 16 App Router + TypeScript + TailwindCSS + shadcn/ui |
+| 前端 | Next.js 16 App Router + TypeScript + TailwindCSS v4（自实现 UI 组件库，无外部 UI 库） |
 | 后端 | Next.js Route Handlers + REST API |
 | ORM | Prisma 6 |
 | 主库 | PostgreSQL 16 |
@@ -137,6 +138,9 @@ docker compose up -d
 | M5 | APK 注入（在线工具 + 命令行 + 反调试） | 已完成 |
 | M6 | 运营能力（工单 + 看板 + 签到 + 通知） | 已完成 |
 | M7 | 安全加固 + 正式上线 | 已完成 |
+| M8 | Web 前端 UI（三角色控制台 + 登录注册 + 仪表盘 + 工单/通知/签到闭环） | 进行中（M8.0 已完成） |
+
+> M8 拆分：M8.0 核心 UI 框架（已完成）→ M8.1 开发者管理页 → M8.2 代理管理页 → M8.3 超管管理页。
 
 ## License
 

@@ -1,26 +1,83 @@
 @import "tailwindcss";
 
+/*
+ * 主题色变量（SPEC.md §2.7 强制）
+ * 禁用暗黑模式 / 毛玻璃 / emoji / 夸张渐变
+ */
 :root {
+  /* 背景 */
   --background: #ffffff;
-  --foreground: #171717;
+  --background-subtle: #f8fafc;
+  /* 文字 */
+  --foreground: #1e293b;
+  --foreground-muted: #64748b;
+  /* 主色：藏蓝 */
+  --primary: #1e3a5f;
+  --primary-hover: #16304f;
+  --primary-subtle: #eef2f7;
+  /* 辅助色 */
+  --accent-blue: #0ea5e9;
+  --accent-green: #10b981;
+  --accent-amber: #d97706;
+  --danger: #ef4444;
+  --danger-subtle: #fef2f2;
+  /* 边框 / 分割线 */
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  /* 字体 */
+  --font-sans: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-background-subtle: var(--background-subtle);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-subtle: var(--primary-subtle);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-green: var(--accent-green);
+  --color-accent-amber: var(--accent-amber);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/*
+ * 强制明亮主题（铁律 03 第 4 条：禁止暗黑风格）
+ * 移除 prefers-color-scheme: dark 覆盖
+ */
+html {
+  color-scheme: light;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 统一焦点样式：主色细环 */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* 滚动条极简化 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--foreground-muted);
 }
