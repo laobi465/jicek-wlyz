@@ -261,6 +261,11 @@ generate_env() {
     REDIS_PASSWORD="$(openssl rand -hex 16)"
     BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
     FIELD_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+    # MASTER_KEY：AES 加密主密钥，用于加密开发者应用的 RSA 私钥 /
+    # 卡密开发者水印 / 易支付密钥（app-service / card-key-service /
+    # epay-service 读取）。经 SHA-256 派生为 AES-256 密钥。
+    # ⚠️ 生成后不可更改，否则已加密数据无法解密。
+    MASTER_KEY="$(openssl rand -hex 32)"
     DB_NAME="jicek_wlyz"
     APP_IMAGE="${APP_IMAGE_DEFAULT}"
     # BETTER_AUTH_URL 必须用实际访问地址（公网 IP），否则 Better Auth 跨站校验
@@ -288,6 +293,9 @@ BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
 BETTER_AUTH_URL=${BETTER_AUTH_URL}
 # 敏感字段加密密钥（crypto-field.ts 读取）
 FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
+# 主密钥（app-service/card-key-service/epay-service 读取，AES 加密 RSA 私钥等）
+# ⚠️ 生成后不可更改，否则已加密数据无法解密
+MASTER_KEY=${MASTER_KEY}
 # 宝塔面板端口（仅记录用）
 BT_PORT=${BT_PORT}
 EOF

@@ -29,6 +29,8 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       # 敏感字段加密（crypto-field.ts 读取）
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
+      # 主密钥（app-service/card-key-service/epay-service 读取，AES 加密 RSA 私钥等）
+      MASTER_KEY: ${MASTER_KEY}
     depends_on:
       db:
         condition: service_healthy
