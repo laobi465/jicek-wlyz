@@ -99,7 +99,7 @@ cp .env.example .env
 # 生成 Prisma Client
 npm run db:generate
 
-# 同步数据库表结构（开发环境用 db push；生产环境首次部署也用 db push，后续变更用 migrate）
+# 创建数据库表（手动部署需执行一次；后续表结构变更用 npm run db:migrate）
 npm run db:push
 
 # 开发模式启动
@@ -110,7 +110,7 @@ npm run build
 npm start
 ```
 
-启动后 app 容器会自动执行 `prisma db push` 同步表结构 + `node scripts/init-admin.mjs` 创建默认超管账号 `admin@example.com / admin123`，访问 `http://localhost:3000` 即可登录。
+启动后 app 容器会自动执行 `node scripts/init-admin.mjs` 创建默认超管账号 `admin@example.com / admin123`（需确保数据库表已提前创建），访问 `http://localhost:3000` 即可登录。
 
 ### Docker Compose 部署
 

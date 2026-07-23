@@ -2,8 +2,8 @@
  * 默认超管账号初始化脚本（容器启动时自动执行）
  *
  * 用途：
- * 替代原 /setup 安装向导。app 容器首次启动时，在 prisma db push 之后、
- * node server.js 之前执行本脚本，自动创建默认超管账号。
+ * 替代原 /setup 安装向导。app 容器首次启动时（在 node server.js 之前）
+ * 执行本脚本，自动创建默认超管账号。
  *
  * 默认账密（PROJECT.md §4.2）：
  * - 邮箱：admin@example.com
