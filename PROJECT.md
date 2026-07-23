@@ -1,6 +1,6 @@
 # jicek-wlyz 项目文档（PROJECT.md）
 
-> 版本：0.6.0 ｜ 状态：M5 APK 注入已完成，待进入 M6 运营能力 ｜ 最后更新：2026-07-23
+> 版本：0.7.0 ｜ 状态：M6 运营能力已完成，待进入 M7 安全加固上线 ｜ 最后更新：2026-07-23
 > 维护规则：任何变更按 SPEC.md 联动更新，版本号语义化递增
 
 ---
@@ -95,8 +95,8 @@ Next.js API（Route Handlers）
 - [已完成] 接入中心（一键接入向导 + 流程图 + 代码生成器 + 测试连接）
 - [已完成] 邀请代理（生成邀请码：一次性/可复用/限量/有效期/绑定关系）
 - [已完成] 店铺与商品管理（创建店铺 / 商品上下架 / 关联卡密模板 / 库存管理）
-- [规划中] 工单系统
-- [规划中] 数据看板
+- [已完成] 工单系统（创建 / 列表 / 详情 / 回复 / 状态流转 open→in_progress→resolved→closed / 权限校验）
+- [已完成] 数据看板（开发者/代理/超管三角色维度统计 / 收入 / 工单 / 提现 / APK 注入）
 
 > 登录验证 API（verify_rsa / auth / use / unbind / check_update / heartbeat）已于 M2 完成，对标 SPEC §2.3 接口规范。
 
@@ -106,16 +106,19 @@ Next.js API（Route Handlers）
 - [已完成] 3 层分销佣金查看（直接/二级/三级上级）
 - [已完成] 余额管理 + 提现（1 元起，T+1 日结，pending/approved/rejected/paid 状态机）
 - [已完成] 生成下级邀请码（开发者邀请 / 代理邀请，once/reusable/limited 三种模式）
+- [已完成] 通知中心（站内信 / 未读红点 / 全部已读）
+- [已完成] 每日签到（连续签到奖励 0.10-0.50 元 / 余额自动入账）
 
 ### 3.3 超管端
 - [规划中] 全平台管理
 - [已完成] 套餐定价（包月套餐 + app_quota + card_quota + sort_order）
 - [已完成] 代理审核（注册审核 + 状态冻结 + 佣金比例调整）
 - [规划中] 系统配置（彩虹易支付商户号 / 对象存储 / 邮件 / 短信 / Cloudflare CDN）
-- [规划中] 数据看板
+- [已完成] 数据看板（全平台用户/业务/收入/工单/提现/APK 注入统计）
 - [已完成] 提现审核（pending → approved/rejected → paid 全流程）
 - [已完成] **GitHub 自动更新面板**（当前版本/最新版本/更新日志/立即更新/版本历史/一键回滚）
 - [已完成] **新版本弹窗提醒**（WebSocket 实时推送，立即更新/稍后提醒）
+- [已完成] 工单客服处理（回复自动置为 in_progress / 标记 resolved / 关闭 closed）
 
 ### 3.4 客户端 SDK（10+ 语言）
 - [已完成] Python SDK（cryptography 库 + 完整 6 actions + ECDHE-PFS）
@@ -297,3 +300,4 @@ jicek-wlyz/
 | 0.4.0 | 2026-07-23 | **M3 完成**：商业化能力落地——代理分销（3 层 A→B→C→D + 邀请码 once/reusable/limited + 佣金分账事务 + 状态审核）/ 提现服务（1 元起 T+1 + pending/approved/rejected/paid 状态机 + 余额锁定）/ 发卡业务（店铺/商品/订单 + 库存事务防超卖 + 关联卡密模板自动发卡 + 退款回滚佣金）/ 彩虹易支付（MD5 签名 + 异步回调 + 验签常量时间比较 + 金额一致性校验）/ 套餐包月（30 天有效期 + app/card quota + 续费叠加 + 过期标记）；扩展 prisma schema 新增 Withdrawal 表 + Product↔CardTemplate 关系；tsc 自检 0 errors |
 | 0.5.0 | 2026-07-23 | **M4 完成**：接入生态落地——6 主流 SDK（Python/Java/PHP/Node.js/Go/易语言，全部实现 verify_rsa/auth/use/unbind/check_update/heartbeat 6 actions + RSA-2048 签名 + AES-256-CBC 加密 + ECDHE-PFS）/ 6 小众语言示例（gglua/andlua/autojs/shell/anjian/htmljs，社区贡献）/ 接入中心向导（access-service + 3 API 路由：languages/generate-code/test-connection + 6 步流程引导）/ 协议规范文档（docs/api/protocol.md，6 actions 详细规范 + 加密细节 + 错误码 + 12 语言 SDK 对照）；tsc 自检 0 errors |
 | 0.6.0 | 2026-07-23 | **M5 完成**：APK 注入落地——在线注入服务（apk-injection-service + 4 API 路由：upload/tasks 列表/详情/下载 + 202 异步 + 任务取消）/ 安全完整性服务（apk-integrity-service：APK magic number 校验 + SHA-256 常量时间比较 + apktool 参数白名单防命令注入 + 路径穿越防护 + SDK 版本/包名白名单 + InjectionConfig 15+ 特性开关）/ BullMQ 异步 Worker（沙箱 mkdtemp 隔离 + apktool d/b + smali 注入 WlyzSdkEntry/WlyzAntiDebug/WlyzIntegrityCheck + assets/wlyz_config.json + apksigner 签名 + 5 分钟超时 + 优雅关闭）/ 命令行工具（tools/apk-injector/cli.ts：inject/verify/sign/help 4 子命令）/ 扩展 prisma schema 新增 ApkInjectionTask 模型 + 8 个 APK 错误码（8001-8008）/ 文档 docs/apk-injection.md（9 章节：安全策略 21 项 + API + CLI + Worker 部署 + Docker Compose）；对象存储上传/下载明确抛错待接入（铁律 04）；tsc 自检 0 errors |
+| 0.7.0 | 2026-07-23 | **M6 完成**：运营能力落地——工单系统（ticket-service + 5 API 路由：创建/列表/详情/回复/状态流转 + 工单编号 TK+YYYYMMDD+随机串 + 状态机 open→in_progress→resolved→closed + 权限校验仅提交者或超管 + 客服回复自动置 in_progress）/ 通知中心（notification-service + 3 API 路由：列表/标记已读/未读数 + 6 种类型 ticket/payment/withdrawal/system/apk/agent + 单条/全部已读 + 内部 sendNotification 接口供其他模块调用）/ 每日签到（checkin-service + 2 API 路由：签到/记录 + 连续签到奖励 0.10-0.50 元 7 天封顶 + UTC+8 时区 + 唯一约束防重复 + 事务保证签到记录与余额原子入账）/ 数据看板（dashboard-service + 1 API 路由：按角色分发开发者/代理/超管三维度统计 + 并行 aggregate 查询）/ 扩展 prisma schema 新增 Notification + CheckIn 模型 + 8 个错误码 8101-8302；tsc 自检 0 errors |

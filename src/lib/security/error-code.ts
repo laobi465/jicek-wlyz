@@ -65,6 +65,20 @@ export enum ErrorCode {
   APK_SIZE_EXCEEDED = 8007,
   /** APK 注入配置参数非法 */
   APK_CONFIG_INVALID = 8008,
+  /** 工单不存在 */
+  TICKET_NOT_FOUND = 8101,
+  /** 工单已关闭，无法回复 */
+  TICKET_CLOSED = 8102,
+  /** 工单状态非法 */
+  TICKET_STATUS_INVALID = 8103,
+  /** 无权操作他人工单 */
+  TICKET_FORBIDDEN = 8104,
+  /** 通知不存在 */
+  NOTIFICATION_NOT_FOUND = 8201,
+  /** 今日已签到 */
+  CHECKIN_ALREADY = 8301,
+  /** 签到记录不存在 */
+  CHECKIN_NOT_FOUND = 8302,
 }
 
 /** 统一响应体 */
@@ -127,6 +141,13 @@ function errorCodeMsg(code: ErrorCode): string {
     [ErrorCode.APK_INJECTION_FAILED]: 'APK 注入失败',
     [ErrorCode.APK_SIZE_EXCEEDED]: 'APK 文件大小超限',
     [ErrorCode.APK_CONFIG_INVALID]: 'APK 注入配置参数非法',
+    [ErrorCode.TICKET_NOT_FOUND]: '工单不存在',
+    [ErrorCode.TICKET_CLOSED]: '工单已关闭，无法回复',
+    [ErrorCode.TICKET_STATUS_INVALID]: '工单状态非法',
+    [ErrorCode.TICKET_FORBIDDEN]: '无权操作他人工单',
+    [ErrorCode.NOTIFICATION_NOT_FOUND]: '通知不存在',
+    [ErrorCode.CHECKIN_ALREADY]: '今日已签到',
+    [ErrorCode.CHECKIN_NOT_FOUND]: '签到记录不存在',
   };
   return map[code] ?? '未知错误';
 }

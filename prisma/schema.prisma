@@ -74,6 +74,8 @@ model User {
   sessions          Session[]
   accounts          Account[]
   apk_tasks         ApkInjectionTask[] @relation("ApkTaskSubmitter")
+  notifications     Notification[]
+  checkins          CheckIn[]
 
   @@map("users")
 }
@@ -676,6 +678,70 @@ model TicketReply {
 
   @@index([ticket_id])
   @@map("ticket_replies")
+}
+
+// ===========================================================================
+// 8.1 通知模块（M6 运营能力）
+// ===========================================================================
+
+/// 通知表（站内信）
+model Notification {
+  id              String   @id @default(cuid())
+  user_id         String   @map("user_id")
+
+  /// 通知类型：ticket 工单 / payment 支付 / withdrawal 提现 / system 系统 / apk APK 注入 / agent 代理
+  type            String
+  title           String
+  content         String   @db.Text
+
+  /// 关联资源 ID（可选，如工单 ID、订单 ID）
+  related_id      String?  @map("related_id")
+
+  /// 关联资源类型（可选）
+  related_type    String?  @map("related_type")
+
+  /// 是否已读
+  is_read         Boolean  @default(false) @map("is_read")
+  read_at         DateTime? @map("read_at")
+
+  created_at      DateTime @default(now()) @map("created_at")
+
+  // 关系
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([is_read])
+  @@index([created_at])
+  @@map("notifications")
+}
+
+// ===========================================================================
+// 8.2 签到模块（M6 运营能力）
+// ===========================================================================
+
+/// 签到记录表（每日签到，连续签到奖励）
+model CheckIn {
+  id              String   @id @default(cuid())
+  user_id         String   @map("user_id")
+
+  /// 签到日期（YYYY-MM-DD，唯一约束 user_id + checkin_date）
+  checkin_date    DateTime @db.Date @map("checkin_date")
+
+  /// 连续签到天数（当日计算）
+  continuous_days Int      @default(1) @map("continuous_days")
+
+  /// 奖励余额（元，签到奖励）
+  reward_amount   Decimal  @default(0) @db.Decimal(10, 2) @map("reward_amount")
+
+  created_at      DateTime @default(now()) @map("created_at")
+
+  // 关系
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, checkin_date])
+  @@index([user_id])
+  @@index([checkin_date])
+  @@map("checkins")
 }
 
 // ===========================================================================
