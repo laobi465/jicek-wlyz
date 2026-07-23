@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "web-project-flow": {
+      "source": "laobi465/skills--1",
+      "sourceType": "github",
+      "skillPath": "web-project-flow/SKILL.md",
+      "computedHash": "d9978126c0bf1e22fe5acb32d8627aaa4628b60bf0ade2ffd97f5c792ffb8741"
+    }
+  }
+}
