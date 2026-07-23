@@ -148,10 +148,6 @@ export function startApkInjectionWorker() {
         }
       }
     },
-    {
-      // 并发数限制：单 Worker 同时处理 1 个任务（APK 注入 CPU 密集）
-      concurrency: 1,
-    },
   );
 }
 

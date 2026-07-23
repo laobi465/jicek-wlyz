@@ -1,6 +1,6 @@
 # jicek-wlyz 项目文档（PROJECT.md）
 
-> 版本：0.5.0 ｜ 状态：M4 接入生态已完成，待进入 M5 APK 注入 ｜ 最后更新：2026-07-23
+> 版本：0.6.0 ｜ 状态：M5 APK 注入已完成，待进入 M6 运营能力 ｜ 最后更新：2026-07-23
 > 维护规则：任何变更按 SPEC.md 联动更新，版本号语义化递增
 
 ---
@@ -91,7 +91,7 @@ Next.js API（Route Handlers）
 - [已完成] 卡密管理（7 种类型 / 批量生成 / 模板 / 签名）
 - [已完成] 设备管理（绑定 / 心跳 / 黑名单 / 解绑）
 - [已完成] 云变量（KV 配置池 / 签名下发）
-- [规划中] APK 注入工具（在线上传 / 异步注入 / 下载）
+- [已完成] APK 注入工具（在线上传 / 异步注入 / 下载）
 - [已完成] 接入中心（一键接入向导 + 流程图 + 代码生成器 + 测试连接）
 - [已完成] 邀请代理（生成邀请码：一次性/可复用/限量/有效期/绑定关系）
 - [已完成] 店铺与商品管理（创建店铺 / 商品上下架 / 关联卡密模板 / 库存管理）
@@ -130,7 +130,7 @@ Next.js API（Route Handlers）
 - [已完成] shell 示例代码（社区贡献，curl + openssl + jq）
 - [已完成] 按键精灵示例代码（社区贡献，Call.Cmd 调用 curl/openssl）
 - [已完成] html/js 示例代码（社区贡献，Web Crypto API + fetch）
-- [规划中] APK 注入工具（在线 + 命令行）
+- [已完成] APK 注入工具（在线 + 命令行）
 - [已完成] 协议规范文档（docs/api/protocol.md，6 actions + 加密细节 + 错误码 + 12 语言对照）
 
 ---
@@ -296,3 +296,4 @@ jicek-wlyz/
 | 0.3.0 | 2026-07-22 | **M2 完成**：核心验证能力落地——加密链路（RSA-2048 + AES-256-CBC + ECDHE-PFS + TS/Nonce 防重放 + 限流风控）/ 应用管理 / 卡密体系（7 类 + CRC32 + RSA 签名 + 开发者水印）/ 验证 API 6 actions / 设备管理 / 云变量；tsc 自检 0 errors |
 | 0.4.0 | 2026-07-23 | **M3 完成**：商业化能力落地——代理分销（3 层 A→B→C→D + 邀请码 once/reusable/limited + 佣金分账事务 + 状态审核）/ 提现服务（1 元起 T+1 + pending/approved/rejected/paid 状态机 + 余额锁定）/ 发卡业务（店铺/商品/订单 + 库存事务防超卖 + 关联卡密模板自动发卡 + 退款回滚佣金）/ 彩虹易支付（MD5 签名 + 异步回调 + 验签常量时间比较 + 金额一致性校验）/ 套餐包月（30 天有效期 + app/card quota + 续费叠加 + 过期标记）；扩展 prisma schema 新增 Withdrawal 表 + Product↔CardTemplate 关系；tsc 自检 0 errors |
 | 0.5.0 | 2026-07-23 | **M4 完成**：接入生态落地——6 主流 SDK（Python/Java/PHP/Node.js/Go/易语言，全部实现 verify_rsa/auth/use/unbind/check_update/heartbeat 6 actions + RSA-2048 签名 + AES-256-CBC 加密 + ECDHE-PFS）/ 6 小众语言示例（gglua/andlua/autojs/shell/anjian/htmljs，社区贡献）/ 接入中心向导（access-service + 3 API 路由：languages/generate-code/test-connection + 6 步流程引导）/ 协议规范文档（docs/api/protocol.md，6 actions 详细规范 + 加密细节 + 错误码 + 12 语言 SDK 对照）；tsc 自检 0 errors |
+| 0.6.0 | 2026-07-23 | **M5 完成**：APK 注入落地——在线注入服务（apk-injection-service + 4 API 路由：upload/tasks 列表/详情/下载 + 202 异步 + 任务取消）/ 安全完整性服务（apk-integrity-service：APK magic number 校验 + SHA-256 常量时间比较 + apktool 参数白名单防命令注入 + 路径穿越防护 + SDK 版本/包名白名单 + InjectionConfig 15+ 特性开关）/ BullMQ 异步 Worker（沙箱 mkdtemp 隔离 + apktool d/b + smali 注入 WlyzSdkEntry/WlyzAntiDebug/WlyzIntegrityCheck + assets/wlyz_config.json + apksigner 签名 + 5 分钟超时 + 优雅关闭）/ 命令行工具（tools/apk-injector/cli.ts：inject/verify/sign/help 4 子命令）/ 扩展 prisma schema 新增 ApkInjectionTask 模型 + 8 个 APK 错误码（8001-8008）/ 文档 docs/apk-injection.md（9 章节：安全策略 21 项 + API + CLI + Worker 部署 + Docker Compose）；对象存储上传/下载明确抛错待接入（铁律 04）；tsc 自检 0 errors |

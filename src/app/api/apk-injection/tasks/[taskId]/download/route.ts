@@ -77,5 +77,6 @@ export async function GET(
   headers.set('X-SHA256', downloadInfo.sha256);
   headers.set('Content-Length', String(apkBuffer.length));
 
-  return new NextResponse(apkBuffer, { status: 200, headers });
+  // Buffer 转 Uint8Array 以兼容 BodyInit 类型
+  return new NextResponse(new Uint8Array(apkBuffer), { status: 200, headers });
 }

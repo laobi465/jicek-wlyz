@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：0.5.0 ｜ 状态：M4 接入生态已完成，待进入 M5 APK 注入 ｜ 最后更新：2026-07-23
+> 版本：0.6.0 ｜ 状态：M5 APK 注入已完成，待进入 M6 运营能力 ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -16,7 +16,7 @@
 | M2 | 核心验证能力 | 应用管理 + 卡密体系 + 登录验证 + 设备管理（RSA+AES+TS/Nonce） | 已完成 |
 | M3 | 商业化能力 | 代理 3 层分销 + 发卡业务 + 彩虹易支付 + 套餐包月充值 | 已完成 |
 | M4 | 接入生态 | 6 种主流 SDK + 协议规范文档 + 小众语言示例 + 接入中心向导 | 已完成 |
-| M5 | APK 注入 | 在线注入工具 + 命令行工具 + SDK 自签名校验 + 反调试 | 未开始 |
+| M5 | APK 注入 | 在线注入工具 + 命令行工具 + SDK 自签名校验 + 反调试 | 已完成 |
 | M6 | 运营能力 | 工单系统 + 数据看板 + 签到 + 通知 | 未开始 |
 | M7 | 安全加固 + 上线 | 签名防篡改全链路 + 限流 + 审计日志 + 上线 | 未开始 |
 
@@ -29,8 +29,8 @@
 | 0.2.1 | /bdeploy GitHub 自动更新模块 | 已完成 |
 | 0.3.0 | M2 核心验证 | 已完成 |
 | 0.4.0 | M3 商业化 | 已完成 |
-| 0.5.0 | M4 接入生态 | 当前 |
-| 0.6.0 | M5 APK 注入 | 规划 |
+| 0.5.0 | M4 接入生态 | 已完成 |
+| 0.6.0 | M5 APK 注入 | 当前 |
 | 0.7.0 | M6 运营能力 | 规划 |
 | 1.0.0 | M7 安全加固 + 正式上线 | 规划 |
 
@@ -398,3 +398,4 @@ release/<版本>     # 发版分支
 | 0.3.0 | 2026-07-22 | **M2 完成**：核心验证能力落地——加密链路（RSA-2048 + AES-256-CBC + ECDHE-PFS + TS/Nonce 防重放 + 限流风控）/ 应用管理（AppKey + client_secret + RSA 密钥对）/ 卡密体系（7 类 + CRC32 + RSA 签名 + 开发者水印 + BullMQ 异步批量）/ 统一验证 API 6 actions（verify_rsa/auth/use/unbind/check_update/heartbeat）/ 设备管理 / 云变量；tsc 自检 0 errors |
 | 0.4.0 | 2026-07-23 | **M3 完成**：商业化能力落地——代理分销（3 层 A→B→C→D + 邀请码 once/reusable/limited + 佣金分账事务 + 状态审核 + 层级递归校验）/ 提现服务（1 元起 T+1 + pending/approved/rejected/paid 状态机 + 余额锁定防超额 + 审计全流程）/ 发卡业务（店铺/商品/订单 + 库存事务防超卖 + 关联卡密模板自动发卡 + 退款回滚佣金）/ 彩虹易支付（MD5 签名 + 异步回调 + 验签常量时间比较防时序攻击 + 金额一致性二次校验 + 幂等回调）/ 套餐包月（30 天有效期 + app/card quota + 续费叠加 + 过期标记定时任务）；扩展 prisma schema 新增 Withdrawal 表 + Product↔CardTemplate 关系；tsc 自检 0 errors |
 | 0.5.0 | 2026-07-23 | **M4 完成**：接入生态落地——6 主流 SDK（Python/Java/PHP/Node.js/Go/易语言，全部实现 6 actions + RSA-2048 签名 + AES-256-CBC 加密 + ECDHE-PFS）/ 6 小众语言示例（gglua/andlua/autojs/shell/anjian/htmljs，社区贡献）/ 接入中心向导（access-service + 3 API 路由：languages/generate-code/test-connection + 6 步流程引导 + 12 语言模板生成 + 连接测试）/ 协议规范文档（docs/api/protocol.md，6 actions 详细规范 + 加密细节 + 错误码 + 12 语言 SDK 对照）；tsc 自检 0 errors |
+| 0.6.0 | 2026-07-23 | **M5 完成**：APK 注入落地——在线注入服务（apk-injection-service + 4 API 路由：upload/tasks 列表/详情/下载 + 202 异步 + 任务取消 + 权限校验）/ 安全完整性服务（apk-integrity-service：APK magic number 校验 PK\x03\x04 + SHA-256 常量时间比较防时序攻击 + apktool 参数白名单防命令注入 + 路径穿越防护 + SDK 版本/包名白名单 + InjectionConfig 15+ 特性开关 + 文件大小 500MB 限制）/ BullMQ 异步 Worker（§2.6.3 第 20 项沙箱 mkdtemp 隔离 + apktool d/b + smali 注入 WlyzSdkEntry/WlyzAntiDebug/WlyzIntegrityCheck + assets/wlyz_config.json + apksigner 签名 + 5 分钟超时 + SIGINT/SIGTERM 优雅关闭）/ 命令行工具（tools/apk-injector/cli.ts：inject/verify/sign/help 4 子命令 + --no-* 反向开关）/ 扩展 prisma schema 新增 ApkInjectionTask 模型（BigInt file_size + status 状态机 pending/processing/success/failed）/ 新增 8 个 APK 错误码 8001-8008 / 文档 docs/apk-injection.md（9 章节：安全策略 21 项 + 在线 API + CLI + 注入后结构 + Worker 部署 + Docker Compose）；对象存储上传/下载明确抛错待接入（铁律 04）；tsc 自检 0 errors |

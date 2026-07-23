@@ -141,8 +141,8 @@ export async function createInjectionTask(
 
   return {
     taskId: task.id,
-    jobId: job.id,
-    status: 'pending',
+    jobId: job.id ?? '',
+    status: 'pending' as const,
   };
 }
 
