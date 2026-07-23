@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.6.7 ｜ 状态：实现彩虹易支付后台配置——config upsert + 加密 + 新增配置 UI ｜ 最后更新：2026-07-23
+> 版本：1.6.8 ｜ 状态：修复 PLATFORM_RSA_PRIVATE_KEY 与 GITHUB_REPO_BRANCH 未配置 ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -56,6 +56,7 @@
 | 1.6.5 | 修复移动端左上角汉堡菜单点击无反应：topbar.tsx 汉堡 `&#9776;` 是占位 `<span>` 无 onClick（注释"M8.0 暂不实现抽屉"），sidebar.tsx `hidden md:flex` 窄屏下侧边栏完全隐藏，用户只看到点了没反应的图标。修复（三文件联动）：① layout.tsx 加 `mobileNavOpen` state ② topbar.tsx `<span>` → `<button onClick={onMenuClick}>` ③ sidebar.tsx 提取 `SidebarContent` 复用，移动端抽屉 `fixed inset-0 z-50`（遮罩点击关闭 + `w-64` 左滑入），点击导航项自动关闭。三角色共享组件一并修复 | 已完成 |
 | 1.6.6 | 修复 `MASTER_KEY 未配置`：app-service/card-key-service/epay-service 读取 MASTER_KEY（经 SHA-256 派生 AES-256 密钥，加密 RSA 私钥/卡密水印/易支付密钥），但 install.sh generate_env 漏生成 + docker-compose.yml 漏传递 + .env.example 漏列出。修复：① install.sh 加 `MASTER_KEY=$(openssl rand -hex 32)` 生成并写入 .env ② docker-compose.yml app environment 加 `MASTER_KEY: ${MASTER_KEY}` ③ .env.example 加说明。已部署环境需手动在 .env 追加 `MASTER_KEY=<openssl rand -hex 32>` 后 `docker compose restart app` | 已完成 |
 | 1.6.7 | 实现彩虹易支付后台配置：epay-service.getEpayConfig 已实现从 SystemConfig 读 epay_pid/epay_key/epay_api_url，但 init.sql 未预置配置行 + updateSystemConfig 用 prisma.update 非 upsert 无法首次创建 + epay_key 存读不对称（存明文但 decryptEpayKey 期望密文）+ 配置页无新增入口。修复：① config-service.ts 加 encryptConfigValue()（MASTER_KEY AES-256-CBC 加密，格式 ivHex:cipherBase64）+ CONFIG_META 元信息 + updateSystemConfig 改 upsert + encrypted=true 自动加密 ② config/page.tsx 加"新增配置"按钮 + Modal。超管在 /admin/config 点新增配置填 3 个键即可。依赖 v1.6.6 MASTER_KEY | 已完成 |
+| 1.6.8 | 修复 `PLATFORM_RSA_PRIVATE_KEY 未配置` 与 `GITHUB_REPO_BRANCH 未配置`：① cloud-variable-service + card-key-service 的 getPlatformPrivateKey() 读 PLATFORM_RSA_PRIVATE_KEY 用于卡密/云变量 RSA 签名，但 install.sh 未生成 + docker-compose 未传递。PEM 含换行在 .env/docker-compose 传递易出错，修复：rsa.ts 加 loadPrivateKeyFromEnv() 自动检测 PEM 原文或 base64 编码两种格式，install.sh 用 `openssl genpkey \| base64 -w 0` 生成单行 base64 存储 ② update-service + github webhook 读 GITHUB_REPO_URL/BRANCH，install.sh 默认填本项目仓库地址，用户 fork 后可改。已部署环境需手动在 .env 追加三个变量后 `docker compose restart app` | 已完成 |
 
 ### 1.3 风险与依赖清单
 
