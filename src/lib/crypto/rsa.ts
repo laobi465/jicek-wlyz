@@ -77,3 +77,42 @@ export function rsaDecrypt(privateKey: string, encrypted: string): string {
     Buffer.from(encrypted, 'base64'),
   ).toString('utf8');
 }
+
+/**
+ * 从环境变量加载 RSA 私钥（PEM 格式）
+ *
+ * 兼容两种存储格式：
+ * 1. PEM 原文（以 `-----BEGIN` 开头）：直接返回，兼容直接粘贴 PEM 的场景
+ * 2. Base64 编码（install.sh 生成）：解码后返回 PEM
+ *
+ * 设计原因：PEM 含换行，在 .env 文件和 docker-compose environment 中传递
+ * 极易出错（多行被截断），因此 install.sh 统一用 base64 编码为单行存储，
+ * 运行时解码还原为 PEM。本函数自动检测两种格式，保证向后兼容。
+ *
+ * @param envKey 环境变量名（如 'PLATFORM_RSA_PRIVATE_KEY'）
+ * @returns PEM 格式私钥字符串
+ * @throws 环境变量未配置时抛错（铁律 04 显式失败）
+ */
+export function loadPrivateKeyFromEnv(envKey: string): string {
+  const raw = process.env[envKey];
+  if (!raw) {
+    throw new Error(`待接入：环境变量 ${envKey} 未配置`);
+  }
+  const trimmed = raw.trim();
+  // PEM 原文：直接返回
+  if (trimmed.startsWith('-----BEGIN')) {
+    return trimmed;
+  }
+  // Base64 编码：解码还原 PEM
+  try {
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+    if (decoded.startsWith('-----BEGIN')) {
+      return decoded;
+    }
+  } catch {
+    // 解码失败，忽略，落到下方抛错
+  }
+  throw new Error(
+    `待接入：环境变量 ${envKey} 格式无效（应为 PEM 原文或 base64 编码的 PEM）`,
+  );
+}

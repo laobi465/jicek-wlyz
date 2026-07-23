@@ -29,6 +29,13 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       # 敏感字段加密（crypto-field.ts 读取）
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
+      # 主密钥（app-service/card-key-service/epay-service 读取，AES 加密 RSA 私钥等）
+      MASTER_KEY: ${MASTER_KEY}
+      # 平台 RSA 私钥（base64 编码的 PEM，card-key-service/cloud-variable-service 读取，用于卡密/云变量签名）
+      PLATFORM_RSA_PRIVATE_KEY: ${PLATFORM_RSA_PRIVATE_KEY}
+      # GitHub 仓库地址与分支（更新面板 update-service / GitHub Webhook 读取）
+      GITHUB_REPO_URL: ${GITHUB_REPO_URL}
+      GITHUB_REPO_BRANCH: ${GITHUB_REPO_BRANCH}
     depends_on:
       db:
         condition: service_healthy

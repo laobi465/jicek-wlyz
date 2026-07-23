@@ -289,11 +289,24 @@ export async function getUpdateLogs(): Promise<CommitInfo[]> {
 }
 
 /**
- * 获取本地当前部署版本（git rev-parse HEAD）
+ * 获取本地当前部署版本
+ *
+ * 三级降级策略，保证 Docker standalone 部署下也不抛错（否则更新面板
+ * 一打开就 500，超管无法查看版本信息）：
+ * 1. 优先读环境变量 DEPLOY_VERSION（Docker 部署时由 install.sh 注入
+ *    宿主机 git commit SHA，见 docker-compose.yml）
+ * 2. 回退 `git rev-parse HEAD`（开发模式 / 宿主机直接跑源码）
+ * 3. 再回退占位值 "unknown"（Docker standalone 模式且未注入环境变量）
  *
  * 命令为常量字符串，无任何外部输入拼接。
  */
 export function getCurrentVersion(): string {
+  // 1. 环境变量注入（Docker 部署推荐方式）
+  const deployVersion = process.env.DEPLOY_VERSION;
+  if (deployVersion && deployVersion.trim()) {
+    return deployVersion.trim();
+  }
+  // 2. git rev-parse HEAD（开发模式 / 宿主机源码部署）
   try {
     const stdout = execSync('git rev-parse HEAD', {
       cwd: getProjectRoot(),
@@ -301,12 +314,46 @@ export function getCurrentVersion(): string {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     return stdout.trim();
-  } catch (error) {
-    throw new UpdateError(
-      UpdateErrorCode.UPDATE_PRECHECK_FAILED,
-      `获取本地版本失败：${(error as Error).message}`,
-    );
+  } catch {
+    // 3. Docker standalone 模式：无 git 二进制 / 无 .git 目录
+    return 'unknown';
   }
+}
+
+/**
+ * 检测当前环境是否可通过 git 获取/更新源码
+ *
+ * Docker standalone 部署下：runner 镜像无 git 二进制，也无 .git 目录，
+ * `git pull` / `git reset` 等操作无法执行。executeUpdate / rollback
+ * 开头用本函数判断，若为 Docker 模式则直接抛出明确错误指引到
+ * `bash install.sh update`，避免后续一连串神秘失败。
+ */
+function isGitAvailable(): boolean {
+  try {
+    execSync('git rev-parse --git-dir', {
+      cwd: getProjectRoot(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 获取当前部署模式
+ *
+ * - 'source': 源码部署（存在 .git 目录），后台"触发更新"按钮可用，
+ *   走 git pull → npm install → prisma migrate → docker compose restart 流程
+ * - 'docker': Docker standalone 部署（镜像内无 git / 无 .git），容器内无法
+ *   执行 git pull，后台"触发更新"按钮不可用，需在宿主机执行 install.sh update
+ *
+ * check 接口返回此标识，前端据此切换 UI：docker 模式展示"宿主机更新指引"
+ * 卡片（含可一键复制的命令 + 版本对比），source 模式展示"触发更新"按钮。
+ */
+export function getDeployMode(): 'source' | 'docker' {
+  return isGitAvailable() ? 'source' : 'docker';
 }
 
 /**
@@ -369,6 +416,14 @@ async function releaseLock(token: string): Promise<void> {
  * 所有命令均为常量字符串，不拼接外部输入。
  */
 export async function executeUpdate(): Promise<ExecuteUpdateResult> {
+  // Docker standalone 部署下容器内无 git / .git，无法执行 git pull，
+  // 直接抛出明确错误指引到宿主机 install.sh，避免后续一连串神秘失败
+  if (!isGitAvailable()) {
+    throw new UpdateError(
+      UpdateErrorCode.UPDATE_EXECUTION_FAILED,
+      '当前为 Docker 容器化部署，容器内无法执行 git pull。请在宿主机部署目录（默认 /opt/jicek-wlyz）执行 `bash install.sh update` 完成更新',
+    );
+  }
   const oldVersion = getCurrentVersion();
 
   // 步骤 1：拉取最新代码
@@ -492,6 +547,14 @@ export async function triggerUpdate(
 export async function rollback(
   options: RollbackOptions,
 ): Promise<RollbackResult> {
+  // Docker standalone 部署下容器内无 git / .git，无法执行 git reset，
+  // 直接抛出明确错误指引到宿主机 reinstall，避免后续一连串神秘失败
+  if (!isGitAvailable()) {
+    throw new UpdateError(
+      UpdateErrorCode.ROLLBACK_FAILED,
+      '当前为 Docker 容器化部署，容器内无法执行 git reset。回滚请在宿主机部署目录重新部署指定版本的镜像，或执行 `bash install.sh reinstall` 重装（注意：reinstall 保留 .env 与数据卷）',
+    );
+  }
   const lockToken = await acquireLock();
   if (!lockToken) {
     throw new UpdateError(

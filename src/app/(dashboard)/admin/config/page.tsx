@@ -8,9 +8,11 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { PageHeader, PageLoading } from "@/components/layout/page-header";
+import { formatDateTime } from "@/components/common/badges";
 import { get, post, put, ApiError } from "@/lib/http";
 
 /**
@@ -20,6 +22,18 @@ import { get, post, put, ApiError } from "@/lib/http";
  * - GET /api/admin/config → 全部配置（按分组统计数量显示在卡片上）
  * - POST /api/admin/config → 初始化默认配置（手动触发，v1.7.1 已自动补建）
  * - PUT /api/admin/config/[key] → 新增自定义配置
+ * - GET /api/admin/config?group= → { configs: SystemConfigView[] }
+ * - POST /api/admin/config → { created }（初始化全部预定义配置项空值行）
+ * - PUT /api/admin/config/[key] { value } → SystemConfigView（upsert，支持首次创建）
+ *
+ * value 统一以字符串存储（SystemConfig.value @db.Text）。
+ * encrypted=true 的配置在前端以掩码展示，编辑时需输入新值。
+ *
+ * 配置流程：
+ * 1. 首次使用点"初始化默认配置"，一键创建全部 7 个分组（payment/storage/email/
+ *    sms/cdn/backup/general 共 30+ 项）的空值行
+ * 2. 按分组筛选定位配置项，点"编辑"逐项填入实际值（如易支付商户 ID、SMTP 密码等）
+ * 3. 也可通过"新增配置"手动添加 CONFIG_META 未覆盖的自定义键
  */
 
 interface SystemConfigView {
@@ -72,6 +86,16 @@ function ConfigPageInner() {
   const [addValue, setAddValue] = useState("");
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState("");
+
+  // 新增配置弹窗
+  const [addOpen, setAddOpen] = useState(false);
+  const [addKey, setAddKey] = useState("");
+  const [addValue, setAddValue] = useState("");
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addError, setAddError] = useState("");
+
+  // 初始化默认配置（一键创建全部预定义项空值行）
+  const [initLoading, setInitLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -147,6 +171,21 @@ function ConfigPageInner() {
     if (!user) return;
     if (!addKey) {
       setAddError("请输入配置键");
+  function openAddModal() {
+    setAddKey("");
+    setAddValue("");
+    setAddError("");
+    setAddOpen(true);
+  }
+
+  async function onConfirmAdd() {
+    if (!user) return;
+    if (!addKey) {
+      setAddError("请输入配置键（如 epay_pid）");
+      return;
+    }
+    if (!addValue) {
+      setAddError("请输入配置值");
       return;
     }
     setAddSubmitting(true);
@@ -170,11 +209,76 @@ function ConfigPageInner() {
     }
   }
 
+  async function onConfirmEdit() {
+    if (!user || !editTarget) return;
+    if (!editValue) {
+      setEditError("请输入配置值");
+      return;
+    }
+    setAddSubmitting(true);
+    try {
+      await put(
+        user,
+        `/api/admin/config/${encodeURIComponent(addKey)}`,
+        { value: addValue },
+      );
+      toast.success("配置已保存");
+      setAddOpen(false);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setAddError(err.message);
+      } else {
+        setAddError("保存配置失败");
+      }
+    } finally {
+      setAddSubmitting(false);
+    }
+  }
+
+  /**
+   * 初始化默认配置：调用 POST /api/admin/config
+   *
+   * 一键为全部 7 个分组（payment/storage/email/sms/cdn/backup/general）的
+   * 30+ 预定义配置项创建空值行，已存在的不覆盖。创建后超管逐项编辑填值即可。
+   */
+  async function onInitDefaults() {
+    if (!user) return;
+    if (
+      !window.confirm(
+        "将一键创建全部预定义配置项（支付/存储/邮件/短信/CDN/备份/通用共 30+ 项）的空值行，已存在的不会覆盖。是否继续？",
+      )
+    ) {
+      return;
+    }
+    setInitLoading(true);
+    try {
+      const result = await post<{ created: number }>(user, "/api/admin/config");
+      if (result.created > 0) {
+        toast.success(`已初始化 ${result.created} 项配置`);
+      } else {
+        toast.success("所有配置已存在，无需初始化");
+      }
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.danger(err.message);
+      } else {
+        toast.danger("初始化配置失败");
+      }
+    } finally {
+      setInitLoading(false);
+    }
+  }
+
+  const total = data?.configs.length ?? 0;
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="系统配置"
         subtitle="点击各分组进入独立配置页面，表单式编辑"
+        subtitle="按分组管理支付 / 存储 / 邮件等系统配置"
         action={
           <div className="flex items-center gap-2">
             <Button
@@ -267,6 +371,48 @@ function ConfigPageInner() {
             onChange={(e) => setAddKey(e.target.value)}
             error={addError}
             hint="必填，自定义键将归入 general 分组"
+          />
+          <Textarea
+            id="config-add-value"
+            label="配置值"
+            placeholder="请输入配置值"
+            value={addValue}
+            onChange={(e) => setAddValue(e.target.value)}
+          />
+        </div>
+      </Modal>
+
+      {/* 新增配置弹窗 */}
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="新增配置"
+        description="配置彩虹易支付：依次新增 epay_pid / epay_key / epay_api_url 三个键"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAddOpen(false)}
+              disabled={addSubmitting}
+            >
+              取消
+            </Button>
+            <Button size="sm" loading={addSubmitting} onClick={onConfirmAdd}>
+              保存
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Input
+            id="config-key"
+            label="配置键"
+            placeholder="如 epay_pid / epay_key / epay_api_url"
+            value={addKey}
+            onChange={(e) => setAddKey(e.target.value)}
+            error={addError}
+            hint="必填，易支付三个键：epay_pid(商户ID) / epay_key(商户密钥,自动加密) / epay_api_url(接口地址)"
           />
           <Textarea
             id="config-add-value"

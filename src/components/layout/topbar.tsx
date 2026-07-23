@@ -9,11 +9,11 @@ import { get } from "@/lib/http";
 /**
  * 顶栏
  *
- * - 左：移动端汉堡菜单（M8.0 暂不实现抽屉，仅占位）+ 当前路径标题
+ * - 左：移动端汉堡菜单按钮（< md 显示，点击打开侧边栏抽屉）+ 用户名
  * - 右：通知红点（轮询 /api/notifications/unread-count）+ 用户菜单（退出）
  */
 
-export function Topbar() {
+export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const { user, signOutAndRedirect } = useAuth();
   const [unread, setUnread] = useState(0);
   const [signOutOpen, setSignOutOpen] = useState(false);
@@ -44,9 +44,14 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-30 h-14 flex items-center justify-between px-4 md:px-6 border-b border-border bg-white">
       <div className="flex items-center gap-3">
-        <span className="md:hidden text-foreground-muted text-lg leading-none">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="打开菜单"
+          className="md:hidden text-foreground-muted text-lg leading-none p-1 -ml-1 hover:text-foreground transition-colors"
+        >
           &#9776;
-        </span>
+        </button>
         <span className="text-sm font-medium text-foreground">
           {user?.name ?? user?.email ?? "用户"}
         </span>

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { rsaSign } from '@/lib/crypto/rsa';
+import { rsaSign, loadPrivateKeyFromEnv } from '@/lib/crypto/rsa';
 
 /**
  * 云变量服务（SPEC §2.1 模块 5）
@@ -14,11 +14,9 @@ import { rsaSign } from '@/lib/crypto/rsa';
  * - SDK 读取时校验签名，防止中间人篡改
  */
 
-/** 平台 RSA 私钥（用于云变量签名） */
+/** 平台 RSA 私钥（用于云变量签名，支持 PEM 原文与 base64 编码两种存储格式） */
 function getPlatformPrivateKey(): string {
-  const key = process.env.PLATFORM_RSA_PRIVATE_KEY;
-  if (!key) throw new Error('待接入：环境变量 PLATFORM_RSA_PRIVATE_KEY 未配置');
-  return key;
+  return loadPrivateKeyFromEnv('PLATFORM_RSA_PRIVATE_KEY');
 }
 
 /**

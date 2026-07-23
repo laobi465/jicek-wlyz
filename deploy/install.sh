@@ -261,6 +261,23 @@ generate_env() {
     REDIS_PASSWORD="$(openssl rand -hex 16)"
     BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
     FIELD_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+    # MASTER_KEY：AES 加密主密钥，用于加密开发者应用的 RSA 私钥 /
+    # 卡密开发者水印 / 易支付密钥（app-service / card-key-service /
+    # epay-service 读取）。经 SHA-256 派生为 AES-256 密钥。
+    # ⚠️ 生成后不可更改，否则已加密数据无法解密。
+    MASTER_KEY="$(openssl rand -hex 32)"
+    # PLATFORM_RSA_PRIVATE_KEY：平台 RSA-2048 私钥（PEM），用于卡密签名 /
+    # 云变量签名（card-key-service / cloud-variable-service 读取）。
+    # PEM 含换行，在 .env 与 docker-compose 中传递易出错，统一 base64 编码
+    # 为单行存储，运行时 loadPrivateKeyFromEnv() 解码还原 PEM。
+    # ⚠️ 生成后不可更改，否则已签发的卡密/云变量签名校验会失败。
+    local rsa_pem
+    rsa_pem="$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)"
+    PLATFORM_RSA_PRIVATE_KEY="$(printf '%s' "${rsa_pem}" | base64 -w 0)"
+    # GITHUB_REPO_URL / GITHUB_REPO_BRANCH：更新面板与 GitHub Webhook 读取。
+    # 默认填本项目仓库地址，用户 fork 后可在 .env 手动修改为自己的仓库。
+    GITHUB_REPO_URL="https://github.com/laobi465/jicek-wlyz.git"
+    GITHUB_REPO_BRANCH="main"
     DB_NAME="jicek_wlyz"
     APP_IMAGE="${APP_IMAGE_DEFAULT}"
     # BETTER_AUTH_URL 必须用实际访问地址（公网 IP），否则 Better Auth 跨站校验
@@ -288,6 +305,15 @@ BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
 BETTER_AUTH_URL=${BETTER_AUTH_URL}
 # 敏感字段加密密钥（crypto-field.ts 读取）
 FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
+# 主密钥（app-service/card-key-service/epay-service 读取，AES 加密 RSA 私钥等）
+# ⚠️ 生成后不可更改，否则已加密数据无法解密
+MASTER_KEY=${MASTER_KEY}
+# 平台 RSA 私钥（base64 编码的 PEM，card-key-service/cloud-variable-service 读取，用于卡密/云变量签名）
+# ⚠️ 生成后不可更改，否则已签发的卡密/云变量签名校验会失败
+PLATFORM_RSA_PRIVATE_KEY=${PLATFORM_RSA_PRIVATE_KEY}
+# GitHub 仓库地址与分支（更新面板 update-service / GitHub Webhook 读取）
+GITHUB_REPO_URL=${GITHUB_REPO_URL}
+GITHUB_REPO_BRANCH=${GITHUB_REPO_BRANCH}
 # 宝塔面板端口（仅记录用）
 BT_PORT=${BT_PORT}
 EOF

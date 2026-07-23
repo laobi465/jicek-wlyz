@@ -46,6 +46,8 @@ interface CheckResult {
   latestVersion: CommitInfo;
   updateLogs: CommitInfo[];
   hasUpdate: boolean;
+  /** 是否为 Docker 容器化部署（true 时容器内无法 git pull，需在宿主机执行 install.sh） */
+  isDockerMode: boolean;
 }
 
 interface UpdateHistoryRecord {
@@ -201,6 +203,17 @@ function UpdatePageInner() {
     }
   }
 
+  /** 一键复制宿主机更新命令到剪贴板 */
+  async function onCopyCommand(command: string) {
+    try {
+      await navigator.clipboard.writeText(command);
+      toast.success("命令已复制到剪贴板");
+    } catch {
+      // 剪贴板 API 不可用时回退到选中文本，提示用户手动复制
+      toast.danger("复制失败，请手动选中命令复制");
+    }
+  }
+
   if (loading || check === undefined) {
     return (
       <div className="flex flex-col gap-5">
@@ -285,25 +298,91 @@ function UpdatePageInner() {
               </dd>
             </div>
           </dl>
-          <div className="mt-4 flex gap-3">
-            <Button
-              size="sm"
-              onClick={onTrigger}
-              loading={triggering}
-              disabled={!check.hasUpdate || triggering}
-            >
-              触发更新
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={onRollback}
-              loading={rollingBack}
-              disabled={rollingBack}
-            >
-              回滚上一版本
-            </Button>
-          </div>
+          {check.isDockerMode ? (
+            // Docker 容器化部署：容器内无 git / 无 .git，无法执行 git pull。
+            // 展示宿主机更新指引（版本对比已在上方 dl 中展示），含可一键复制的命令。
+            <div className="mt-4 rounded-lg border border-warning/40 bg-warning/5 p-4 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="warning">Docker 部署</Badge>
+                <span className="text-xs text-foreground-muted">
+                  容器内无法执行 git pull，请在宿主机执行以下命令完成更新
+                </span>
+              </div>
+
+              {/* 更新命令（一键复制） */}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-foreground-muted">更新到最新版本</span>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded bg-foreground/5 px-3 py-2 text-xs font-mono text-foreground break-all">
+                    cd /opt/jicek-wlyz &amp;&amp; bash install.sh update
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      onCopyCommand("cd /opt/jicek-wlyz && bash install.sh update")
+                    }
+                  >
+                    复制
+                  </Button>
+                </div>
+              </div>
+
+              {/* 回滚命令（一键复制） */}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-foreground-muted">
+                  回滚到上一版本（reinstall 保留 .env 与数据卷）
+                </span>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded bg-foreground/5 px-3 py-2 text-xs font-mono text-foreground break-all">
+                    cd /opt/jicek-wlyz &amp;&amp; bash install.sh reinstall
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      onCopyCommand(
+                        "cd /opt/jicek-wlyz && bash install.sh reinstall",
+                      )
+                    }
+                  >
+                    复制
+                  </Button>
+                </div>
+              </div>
+
+              {/* 操作步骤 */}
+              <ol className="text-xs text-foreground-muted flex flex-col gap-1 list-decimal list-inside">
+                <li>SSH 登录宿主机（部署服务器）</li>
+                <li>粘贴上方命令并执行，等待拉取新镜像并重启容器</li>
+                <li>
+                  完成后回到本页面点"检查更新"刷新版本信息（如部署目录非默认
+                  /opt/jicek-wlyz，请将命令中的路径替换为实际部署目录）
+                </li>
+              </ol>
+            </div>
+          ) : (
+            // 源码部署：容器内可直接 git pull，展示"触发更新"与"回滚"按钮
+            <div className="mt-4 flex gap-3">
+              <Button
+                size="sm"
+                onClick={onTrigger}
+                loading={triggering}
+                disabled={!check.hasUpdate || triggering}
+              >
+                触发更新
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={onRollback}
+                loading={rollingBack}
+                disabled={rollingBack}
+              >
+                回滚上一版本
+              </Button>
+            </div>
+          )}
         </CardBody>
       </Card>
 

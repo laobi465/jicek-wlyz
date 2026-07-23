@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { createQueue, QueueName } from '@/lib/queue';
 import { generateCardCode } from './card-code-generator';
-import { rsaSign } from '@/lib/crypto/rsa';
+import { rsaSign, loadPrivateKeyFromEnv } from '@/lib/crypto/rsa';
 import { deriveAesKey, aesEncrypt, generateAesIv } from '@/lib/crypto/aes';
 
 /**
@@ -51,11 +51,9 @@ function generateDeveloperWatermark(developerId: string): string {
   return `${iv.toString('hex')}:${aesEncrypt(key, iv, developerId)}`;
 }
 
-/** 平台 RSA 私钥（用于卡密签名） */
+/** 平台 RSA 私钥（用于卡密签名，支持 PEM 原文与 base64 编码两种存储格式） */
 function getPlatformPrivateKey(): string {
-  const key = process.env.PLATFORM_RSA_PRIVATE_KEY;
-  if (!key) throw new Error('待接入：环境变量 PLATFORM_RSA_PRIVATE_KEY 未配置');
-  return key;
+  return loadPrivateKeyFromEnv('PLATFORM_RSA_PRIVATE_KEY');
 }
 
 /**
