@@ -207,6 +207,7 @@ start_services() {
 # ---------- 9. 等待健康检查通过 ----------
 wait_for_healthy() {
     info "等待应用健康检查通过（最多 180 秒）..."
+    info "提示：首次启动时 app 容器会自动执行 prisma db push 同步表结构，可能稍慢"
     local deadline=$((SECONDS + 180))
     local healthy=0
     while [ "$SECONDS" -lt "$deadline" ]; do

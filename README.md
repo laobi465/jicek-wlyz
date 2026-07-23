@@ -94,8 +94,11 @@ npm install
 cp .env.example .env
 # 编辑 .env 填写数据库、Redis、密钥等配置
 
-# 数据库迁移
-npx prisma migrate dev --name init
+# 生成 Prisma Client
+npm run db:generate
+
+# 同步数据库表结构（开发环境用 db push；生产环境首次部署也用 db push，后续变更用 migrate）
+npm run db:push
 
 # 开发模式启动
 npm run dev

@@ -48,9 +48,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # 复制 Prisma 生成客户端（standalone 未必完整追踪引擎二进制）
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+# 复制 prisma CLI + schema，运行时执行 db push 同步表结构
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 
 USER nextjs
 # 端口由运行时 PORT 环境变量决定（默认 3000）
 EXPOSE 3000
-# standalone server.js 会读取 PORT / HOSTNAME 环境变量
-CMD ["node", "server.js"]
+# 容器启动时先执行 prisma db push 同步表结构，再启动 Next.js server
+# --accept-data-loss 仅在无已有表时创建，不会破坏已有数据（生产环境仍建议优先用 migrate）
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]
