@@ -43,7 +43,7 @@
 
 ### 一键安装（推荐）
 
-使用 SSH 连接服务器，执行以下命令即可完成全部部署（自动检测并安装宝塔面板 + Docker + 端口冲突检测 + 配置生成）：
+使用 SSH 连接服务器，执行以下命令即可完成全部部署（自动检测并安装宝塔面板 + Docker + 端口冲突检测 + 配置生成 + 建表 + 创建超管）：
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh)
@@ -56,8 +56,28 @@ bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/depl
 3. 检测并安装 Docker（已安装则跳过）
 4. 端口冲突检测（占用自动 +1）：宝塔端口 / 项目端口 / 数据库端口 / Redis 端口
 5. 随机生成数据库密码、Redis 密码、Better Auth Secret、字段加密密钥（`openssl rand`）
-6. 拉取预构建 Docker 镜像并启动（不上传源码到服务器）
-7. 输出配置信息并保存至 `/root/jicek-wlyz-deploy.txt`
+6. 拉取预构建 Docker 镜像（不可用时回退本地构建）
+7. **分步启动**：先启动 db + redis → 等待 db 就绪 → 自动执行 `prisma db push` 建表 → 启动 app（init-admin 创建默认超管）
+8. 等待应用健康检查通过（失败自动打印容器日志便于排查）
+9. 输出配置信息并保存至 `/root/jicek-wlyz-deploy.txt`
+
+> **幂等**：重复运行安装命令时，若系统已安装且正在运行，脚本会提示并引导使用 `update`/`reinstall`/`uninstall` 子命令，不会重复安装。
+
+### 常用运维命令
+
+```bash
+# 更新到最新版本（拉取新镜像 + 同步表结构 + 重启）
+bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh) update
+
+# 卸载（停止删除容器，保留数据卷）
+bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh) uninstall
+
+# 重装（保留 .env 与数据卷）
+bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh) reinstall
+
+# 查看帮助
+bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh) --help
+```
 
 ### 安装后配置
 

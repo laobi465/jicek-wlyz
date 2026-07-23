@@ -3,10 +3,11 @@
 # 网络验证 SaaS 系统 - SSH 一键安装脚本
 # 脚本托管地址：https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh
 # 使用方式：bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh)
+# 子命令  ：install.sh update | reinstall | uninstall | --help
 # 适用系统：Debian 11 / Debian 12
 # ============================================================================
 
-set -e
+set -euo pipefail
 
 # ---------- 全局配置 ----------
 DEPLOY_DIR="/opt/jicek-wlyz"                       # 部署目录
@@ -14,21 +15,145 @@ DEPLOY_INFO_FILE="/root/jicek-wlyz-deploy.txt"     # 部署信息保存位置
 COMPOSE_URL="https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/docker-compose.yml"
 APP_IMAGE_DEFAULT="ghcr.io/laobi465/jicek-wlyz:latest"
 SCRIPT_URL="https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh"
+REPO_URL="https://github.com/laobi465/jicek-wlyz.git"
 
 # ---------- 颜色输出 ----------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 info()  { echo -e "${GREEN}[信息]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[警告]${NC} $1"; }
 error() { echo -e "${RED}[错误]${NC} $1" >&2; }
+step()  { echo -e "${CYAN}${BOLD}[$1]${NC} $2"; }
 
-# ---------- 1. 检测操作系统（必须是 Debian 11/12）----------
+# 失败时自动打印容器最近日志，便于排查
+dump_logs() {
+    error "执行失败，自动打印最近日志（--tail=50）："
+    cd "${DEPLOY_DIR}" 2>/dev/null || return 0
+    docker compose logs --tail=50 2>/dev/null || true
+}
+
+# ============================================================================
+# 通用工具函数
+# ============================================================================
+
+# 检测是否已安装（.env + docker-compose.yml 同时存在）
+is_installed() {
+    [ -f "${DEPLOY_DIR}/.env" ] && [ -f "${DEPLOY_DIR}/docker-compose.yml" ]
+}
+
+# 检测 app 容器是否正在运行
+is_running() {
+    [ -f "${DEPLOY_DIR}/docker-compose.yml" ] || return 1
+    local cid
+    cid="$(cd "${DEPLOY_DIR}" && docker compose ps -q app 2>/dev/null)" || cid=""
+    [ -n "$cid" ] && docker inspect --format='{{.State.Running}}' "$cid" 2>/dev/null | grep -q true
+}
+
+# 端口冲突检测：若被占用则自动 +1，直到找到空闲端口
+find_free_port() {
+    local port="$1"
+    while true; do
+        if ss -tuln | awk '{print $5}' | grep -qE ":${port}\$"; then
+            port=$((port + 1))
+        else
+            echo "$port"
+            return 0
+        fi
+    done
+}
+
+# 获取公网 IP（依次尝试多个服务，回退到内网 IP）
+get_public_ip() {
+    local ip
+    ip="$(curl -sf --max-time 5 https://ifconfig.me 2>/dev/null || true)"
+    if [ -z "$ip" ]; then
+        ip="$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+    fi
+    if [ -z "$ip" ]; then
+        ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    fi
+    echo "${ip:-127.0.0.1}"
+}
+
+# 等待 db 容器健康（最多 90 秒）
+wait_for_db_healthy() {
+    info "等待数据库就绪（最多 90 秒）..."
+    local deadline=$((SECONDS + 90))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        local cid
+        cid="$(docker compose ps -q db 2>/dev/null || true)"
+        if [ -n "$cid" ]; then
+            local health
+            health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$cid" 2>/dev/null || echo unknown)"
+            if [ "$health" = "healthy" ]; then
+                info "数据库就绪"
+                return 0
+            fi
+        fi
+        sleep 3
+    done
+    error "数据库在 90 秒内未就绪"
+    dump_logs
+    exit 1
+}
+
+# 等待 app 容器健康（最多 180 秒，无 healthcheck 时回退 HTTP 探测）
+wait_for_app_healthy() {
+    info "等待应用健康检查通过（最多 180 秒）..."
+    local deadline=$((SECONDS + 180))
+    local healthy=0
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        local cid
+        cid="$(docker compose ps -q app 2>/dev/null || true)"
+        if [ -n "$cid" ]; then
+            local health
+            health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$cid" 2>/dev/null || echo unknown)"
+            if [ "$health" = "healthy" ]; then
+                healthy=1
+                break
+            fi
+            if [ "$health" = "no-healthcheck" ] || [ "$health" = "unknown" ]; then
+                if curl -sf "http://127.0.0.1:${APP_PORT}/" >/dev/null 2>&1; then
+                    healthy=1
+                    break
+                fi
+            fi
+        fi
+        sleep 5
+    done
+    if [ "$healthy" -ne 1 ]; then
+        error "应用在 180 秒内未通过健康检查"
+        dump_logs
+        return 1
+    fi
+    info "应用健康检查通过"
+}
+
+# 创建数据库表结构（临时容器执行 prisma db push）
+# 前置条件：db 容器已启动且健康
+create_db_schema() {
+    info "创建数据库表结构（prisma db push）..."
+    if docker compose run --rm --no-deps app npx prisma db push --skip-generate; then
+        info "数据库表结构创建成功"
+    else
+        error "数据库表结构创建失败"
+        dump_logs
+        exit 1
+    fi
+}
+
+# ============================================================================
+# 环境准备函数
+# ============================================================================
+
+# 1. 检测操作系统（必须是 Debian 11/12）
 detect_os() {
-    info "检测操作系统..."
+    step "1" "检测操作系统..."
     if [ ! -f /etc/os-release ]; then
         error "无法检测操作系统，仅支持 Debian 11/12"
         exit 1
@@ -48,9 +173,9 @@ detect_os() {
     info "检测到系统：${PRETTY_NAME}"
 }
 
-# ---------- 2. 检测并安装宝塔面板 ----------
+# 2. 检测并安装宝塔面板
 ensure_bt() {
-    info "检测宝塔面板..."
+    step "2" "检测宝塔面板..."
     if command -v bt >/dev/null 2>&1; then
         info "宝塔面板已安装"
         return 0
@@ -63,9 +188,9 @@ ensure_bt() {
     info "宝塔面板安装完成"
 }
 
-# ---------- 3. 检测并安装 Docker ----------
+# 3. 检测并安装 Docker
 ensure_docker() {
-    info "检测 Docker..."
+    step "3" "检测 Docker..."
     if command -v docker >/dev/null 2>&1; then
         info "Docker 已安装（$(docker --version)）"
     else
@@ -75,7 +200,6 @@ ensure_docker() {
         systemctl start docker
         info "Docker 安装完成"
     fi
-    # 确保 docker compose 插件可用
     if ! docker compose version >/dev/null 2>&1; then
         warn "未检测到 docker compose 插件，安装中..."
         apt-get update
@@ -84,27 +208,11 @@ ensure_docker() {
     info "docker compose 可用（$(docker compose version --short 2>/dev/null || echo unknown)）"
 }
 
-# ---------- 4. 端口冲突检测函数 ----------
-# 使用 ss -tuln 检测端口占用，若被占用则自动 +1
-find_free_port() {
-    local port="$1"
-    while true; do
-        # 提取监听套接字的本地地址列，判断是否以 :port 结尾
-        if ss -tuln | awk '{print $5}' | grep -qE ":${port}\$"; then
-            port=$((port + 1))
-        else
-            echo "$port"
-            return 0
-        fi
-    done
-}
-
-# ---------- 5. 计算各服务端口 ----------
+# 4. 计算各服务端口
 compute_ports() {
-    info "检测可用端口..."
-    # 宝塔面板端口：若已安装则读取实际端口，否则从 8888 起寻找空闲端口
+    step "4" "检测可用端口..."
     if [ -f /www/server/panel/data/port.pl ]; then
-        BT_PORT="$(cat /www/server/panel/data/port.pl | tr -d '[:space:]')"
+        BT_PORT="$(tr -d '[:space:]' < /www/server/panel/data/port.pl)"
     else
         BT_PORT="$(find_free_port 8888)"
     fi
@@ -114,17 +222,15 @@ compute_ports() {
     info "端口分配 -> 宝塔:${BT_PORT}  应用:${APP_PORT}  数据库:${DB_PORT}  Redis:${REDIS_PORT}"
 }
 
-# ---------- 6. 生成密钥与 .env ----------
+# 5. 生成密钥与 .env
 generate_env() {
-    info "生成密钥与配置文件..."
-    # 密码用 openssl rand -hex 16，认证密钥用 openssl rand -hex 32
+    step "5" "生成密钥与配置文件..."
     DB_PASSWORD="$(openssl rand -hex 16)"
     REDIS_PASSWORD="$(openssl rand -hex 16)"
     BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
     FIELD_ENCRYPTION_KEY="$(openssl rand -hex 32)"
     DB_NAME="jicek_wlyz"
     APP_IMAGE="${APP_IMAGE_DEFAULT}"
-    # 应用外部访问地址（用户部署后可在 .env 中改为实际域名）
     BETTER_AUTH_URL="http://localhost:${APP_PORT}"
 
     mkdir -p "${DEPLOY_DIR}"
@@ -153,104 +259,80 @@ EOF
     info ".env 已生成：${DEPLOY_DIR}/.env"
 }
 
-# ---------- 7. 下载 docker-compose.yml ----------
+# 6. 下载 docker-compose.yml
 download_compose() {
-    info "下载 docker-compose.yml..."
+    step "6" "下载 docker-compose.yml..."
     curl -fsSL "${COMPOSE_URL}" -o "${DEPLOY_DIR}/docker-compose.yml"
     info "docker-compose.yml 已下载至 ${DEPLOY_DIR}/docker-compose.yml"
 }
 
-# ---------- 8. 拉取镜像并启动 ----------
-start_services() {
+# 7. 准备镜像（远程拉取优先，失败回退本地构建）
+prepare_image() {
+    step "7" "准备应用镜像..."
     cd "${DEPLOY_DIR}"
 
-    # 尝试拉取远程镜像（CI 构建推送的）
-    info "尝试拉取远程镜像..."
     if docker compose pull app 2>/dev/null; then
-        info "远程镜像拉取成功，启动服务..."
-        # 拉取其他服务镜像（db/redis/apk-injector）
-        docker compose pull
-        docker compose up -d
+        info "远程镜像拉取成功"
+        docker compose pull db redis apk-injector 2>/dev/null || true
         return 0
     fi
 
     # 远程镜像不可用 → 回退到本地构建模式
     warn "远程镜像不可用（可能 CI 尚未构建），切换到本地构建模式..."
-    if [ ! -f "${DEPLOY_DIR}/Dockerfile" ]; then
-        info "克隆源码仓库用于本地构建..."
-        git clone --depth 1 https://github.com/laobi465/jicek-wlyz.git /tmp/jicek-wlyz-build 2>/dev/null
-        if [ ! -f /tmp/jicek-wlyz-build/Dockerfile ]; then
-            error "源码克隆失败，请检查网络或手动 clone 仓库后执行 docker compose up -d --build"
-            exit 1
-        fi
-        # 仅复制 Docker 构建所需的文件（保持部署目录整洁）
-        cp /tmp/jicek-wlyz-build/Dockerfile "${DEPLOY_DIR}/"
-        cp -r /tmp/jicek-wlyz-build/src "${DEPLOY_DIR}/"
-        cp -r /tmp/jicek-wlyz-build/public "${DEPLOY_DIR}/"
-        cp /tmp/jicek-wlyz-build/package.json "${DEPLOY_DIR}/"
-        cp /tmp/jicek-wlyz-build/package-lock.json "${DEPLOY_DIR}/" 2>/dev/null || true
-        cp -r /tmp/jicek-wlyz-build/prisma "${DEPLOY_DIR}/"
-        cp /tmp/jicek-wlyz-build/next.config.ts "${DEPLOY_DIR}/"
-        cp /tmp/jicek-wlyz-build/tsconfig.json "${DEPLOY_DIR}/"
-        rm -rf /tmp/jicek-wlyz-build
-        info "源码已就绪，开始本地构建..."
-    fi
-
-    # 本地构建并启动
-    docker compose up -d --build
-    if [ $? -ne 0 ]; then
-        error "本地构建失败，请查看上方错误信息"
+    prepare_local_build_source
+    info "开始本地构建镜像..."
+    if ! docker compose build app; then
+        error "本地构建失败"
         exit 1
     fi
+    info "镜像构建完成"
 }
 
-# ---------- 9. 等待健康检查通过 ----------
-wait_for_healthy() {
-    info "等待应用健康检查通过（最多 180 秒）..."
-    info "提示：首次启动需先手动创建数据库表（docker compose exec app npx prisma db push），否则 init-admin 会失败"
-    local deadline=$((SECONDS + 180))
-    local healthy=0
-    while [ "$SECONDS" -lt "$deadline" ]; do
-        local cid
-        cid="$(docker compose ps -q app 2>/dev/null || true)"
-        if [ -n "$cid" ]; then
-            local health
-            health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$cid" 2>/dev/null || echo unknown)"
-            if [ "$health" = "healthy" ]; then
-                healthy=1
-                break
-            fi
-            if [ "$health" = "no-healthcheck" ] || [ "$health" = "unknown" ]; then
-                # 无健康检查时回退到 HTTP 探测
-                if curl -sf "http://127.0.0.1:${APP_PORT}/" >/dev/null 2>&1; then
-                    healthy=1
-                    break
-                fi
-            fi
-        fi
-        sleep 5
-    done
-    if [ "$healthy" -ne 1 ]; then
-        warn "应用在 180 秒内未通过健康检查，请查看日志：docker compose logs"
-    else
-        info "应用健康检查通过"
+# 准备本地构建所需源码（仅复制 Docker 构建相关文件）
+prepare_local_build_source() {
+    if [ -f "${DEPLOY_DIR}/Dockerfile" ]; then
+        info "源码已就绪（Dockerfile 已存在）"
+        return 0
     fi
+    info "克隆源码仓库用于本地构建..."
+    rm -rf /tmp/jicek-wlyz-build
+    git clone --depth 1 "${REPO_URL}" /tmp/jicek-wlyz-build 2>/dev/null || true
+    if [ ! -f /tmp/jicek-wlyz-build/Dockerfile ]; then
+        error "源码克隆失败，请检查网络或手动 clone 仓库后执行 docker compose up -d --build"
+        exit 1
+    fi
+    cp /tmp/jicek-wlyz-build/Dockerfile "${DEPLOY_DIR}/"
+    cp -r /tmp/jicek-wlyz-build/src "${DEPLOY_DIR}/"
+    cp -r /tmp/jicek-wlyz-build/public "${DEPLOY_DIR}/"
+    cp /tmp/jicek-wlyz-build/package.json "${DEPLOY_DIR}/"
+    cp /tmp/jicek-wlyz-build/package-lock.json "${DEPLOY_DIR}/" 2>/dev/null || true
+    cp -r /tmp/jicek-wlyz-build/prisma "${DEPLOY_DIR}/"
+    cp -r /tmp/jicek-wlyz-build/scripts "${DEPLOY_DIR}/" 2>/dev/null || true
+    cp /tmp/jicek-wlyz-build/next.config.ts "${DEPLOY_DIR}/"
+    cp /tmp/jicek-wlyz-build/tsconfig.json "${DEPLOY_DIR}/"
+    rm -rf /tmp/jicek-wlyz-build
 }
 
-# ---------- 10. 获取公网 IP ----------
-get_public_ip() {
-    local ip
-    ip="$(curl -sf --max-time 5 https://ifconfig.me 2>/dev/null || true)"
-    if [ -z "$ip" ]; then
-        ip="$(curl -sf --max-time 5 https://api.ipify.org 2>/dev/null || true)"
-    fi
-    if [ -z "$ip" ]; then
-        ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    fi
-    echo "${ip}"
+# 8. 启动服务（分步：数据层 → 建表 → 应用层）
+start_services() {
+    step "8" "启动服务..."
+
+    # 8.1 先启动数据层
+    info "启动数据库与 Redis..."
+    docker compose up -d db redis
+
+    # 8.2 等待数据库就绪
+    wait_for_db_healthy
+
+    # 8.3 创建数据库表结构（自动建表，恢复一键体验）
+    create_db_schema
+
+    # 8.4 启动应用层（表已存在，init-admin 会成功创建默认超管）
+    info "启动应用与 APK 注入容器..."
+    docker compose up -d app apk-injector
 }
 
-# ---------- 11. 输出并保存部署信息 ----------
+# 9. 输出并保存部署信息
 save_and_print_deploy_info() {
     local public_ip now
     public_ip="$(get_public_ip)"
@@ -295,24 +377,203 @@ EOF
     echo
     echo -e "${YELLOW}提示：${NC}默认密码较弱，请登录后立即修改！${DEPLOY_INFO_FILE} 包含数据库与 Redis 密码等敏感信息，请妥善保管。"
     echo
+    echo -e "${YELLOW}常用命令：${NC}"
+    echo -e "  更新系统 : bash <(curl -sSL ${SCRIPT_URL}) update"
+    echo -e "  卸载系统 : bash <(curl -sSL ${SCRIPT_URL}) uninstall"
+    echo -e "  重装系统 : bash <(curl -sSL ${SCRIPT_URL}) reinstall"
+    echo -e "  查看日志 : cd ${DEPLOY_DIR} && docker compose logs -f app"
+    echo
     echo -e "${YELLOW}脚本托管地址：${NC}${SCRIPT_URL}"
     echo
 }
 
-# ---------- 主流程 ----------
-main() {
+# ============================================================================
+# 子命令：install（幂等安装）
+# ============================================================================
+cmd_install() {
     echo -e "${CYAN}==============================${NC}"
     echo -e "${CYAN}  网络验证系统 一键安装${NC}"
     echo -e "${CYAN}==============================${NC}"
+
+    # 幂等检测：已安装则提示
+    if is_installed && is_running; then
+        warn "系统已安装且正在运行（${DEPLOY_DIR}）"
+        echo -e "  ${GREEN}更新${NC}  : bash <(curl -sSL ${SCRIPT_URL}) update"
+        echo -e "  ${GREEN}重装${NC}  : bash <(curl -sSL ${SCRIPT_URL}) reinstall"
+        echo -e "  ${GREEN}卸载${NC}  : bash <(curl -sSL ${SCRIPT_URL}) uninstall"
+        exit 0
+    fi
+
     detect_os
     ensure_bt
     ensure_docker
     compute_ports
     generate_env
     download_compose
+    prepare_image
     start_services
-    wait_for_healthy
+    wait_for_app_healthy || exit 1
     save_and_print_deploy_info
+}
+
+# ============================================================================
+# 子命令：update（更新镜像 + 同步表结构 + 重启）
+# ============================================================================
+cmd_update() {
+    echo -e "${CYAN}==============================${NC}"
+    echo -e "${CYAN}  网络验证系统 更新${NC}"
+    echo -e "${CYAN}==============================${NC}"
+
+    if ! is_installed; then
+        error "系统未安装，请先执行安装：bash <(curl -sSL ${SCRIPT_URL})"
+        exit 1
+    fi
+
+    cd "${DEPLOY_DIR}"
+
+    step "1" "拉取最新镜像..."
+    docker compose pull || true
+    # 远程镜像不可用时尝试本地重新构建
+    if ! docker image inspect "${APP_IMAGE:-${APP_IMAGE_DEFAULT}}" >/dev/null 2>&1 \
+       && ! docker compose images app 2>/dev/null | grep -q app; then
+        warn "远程镜像不可用，尝试本地构建..."
+        prepare_local_build_source
+        docker compose build app || { error "构建失败"; exit 1; }
+    fi
+
+    step "2" "重启数据层..."
+    docker compose up -d db redis
+    wait_for_db_healthy
+
+    step "3" "同步数据库表结构..."
+    create_db_schema
+
+    step "4" "重启应用..."
+    docker compose up -d app apk-injector
+    # 读取当前 APP_PORT（.env 可能被用户修改过）
+    APP_PORT="$(grep '^APP_PORT=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
+    wait_for_app_healthy || exit 1
+
+    echo
+    info "更新完成！应用已运行在端口 ${APP_PORT}"
+}
+
+# ============================================================================
+# 子命令：uninstall（卸载：停止并删除容器，保留数据卷）
+# ============================================================================
+cmd_uninstall() {
+    echo -e "${CYAN}==============================${NC}"
+    echo -e "${CYAN}  网络验证系统 卸载${NC}"
+    echo -e "${CYAN}==============================${NC}"
+
+    if ! is_installed; then
+        warn "系统未安装，无需卸载"
+        exit 0
+    fi
+
+    cd "${DEPLOY_DIR}"
+    step "1" "停止并删除容器..."
+    docker compose down
+    info "容器已停止并删除"
+
+    echo
+    warn "数据卷已保留（数据库 + Redis 数据未删除）："
+    echo -e "  ${GREEN}查看${NC} : docker volume ls | grep jicek"
+    echo -e "  ${GREEN}彻底删除数据${NC} : docker volume rm jicek-wlyz_db-data jicek-wlyz_redis-data jicek-wlyz_apk-work"
+    echo
+    info "如需彻底清理，可删除部署目录：rm -rf ${DEPLOY_DIR}"
+    info "卸载完成"
+}
+
+# ============================================================================
+# 子命令：reinstall（卸载后重装，保留数据卷）
+# ============================================================================
+cmd_reinstall() {
+    echo -e "${CYAN}==============================${NC}"
+    echo -e "${CYAN}  网络验证系统 重装${NC}"
+    echo -e "${CYAN}==============================${NC}"
+
+    if is_installed; then
+        cd "${DEPLOY_DIR}"
+        step "0" "停止并删除旧容器..."
+        docker compose down || true
+    fi
+
+    # 重装时保留 .env（密码不变，避免无法登录），但重新下载 compose
+    if [ -f "${DEPLOY_DIR}/.env" ]; then
+        info "保留已有 .env（密码不变），如需全新配置请先 uninstall 再安装"
+    fi
+
+    ensure_docker
+    # 若无 .env 则重新生成
+    if [ ! -f "${DEPLOY_DIR}/.env" ]; then
+        compute_ports
+        generate_env
+    else
+        # 读取已有端口用于健康检查
+        APP_PORT="$(grep '^APP_PORT=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
+        DB_PORT="$(grep '^DB_PORT=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
+        REDIS_PORT="$(grep '^REDIS_PORT=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
+        BT_PORT="$(grep '^BT_PORT=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
+    fi
+    download_compose
+    prepare_image
+    start_services
+    wait_for_app_healthy || exit 1
+    save_and_print_deploy_info
+}
+
+# ============================================================================
+# 帮助
+# ============================================================================
+show_help() {
+    cat <<EOF
+网络验证 SaaS 系统 - 一键安装脚本
+
+用法：
+  bash <(curl -sSL ${SCRIPT_URL}) [子命令]
+
+子命令：
+  install     全新安装（默认，幂等：已安装则提示）
+  update      更新镜像 + 同步表结构 + 重启
+  uninstall   卸载（停止删除容器，保留数据卷）
+  reinstall   重装（保留 .env 与数据卷）
+  --help      显示此帮助
+
+示例：
+  # 全新安装
+  bash <(curl -sSL ${SCRIPT_URL})
+
+  # 更新到最新版本
+  bash <(curl -sSL ${SCRIPT_URL}) update
+
+  # 卸载（保留数据）
+  bash <(curl -sSL ${SCRIPT_URL}) uninstall
+
+部署目录：${DEPLOY_DIR}
+部署信息：${DEPLOY_INFO_FILE}
+脚本托管：${SCRIPT_URL}
+EOF
+}
+
+# ============================================================================
+# 主入口
+# ============================================================================
+main() {
+    local cmd="${1:-install}"
+    case "$cmd" in
+        install|"")  cmd_install ;;
+        update)      cmd_update ;;
+        uninstall)   cmd_uninstall ;;
+        reinstall)   cmd_reinstall ;;
+        --help|-h)   show_help ;;
+        *)
+            error "未知命令: $cmd"
+            echo
+            show_help
+            exit 1
+            ;;
+    esac
 }
 
 main "$@"
