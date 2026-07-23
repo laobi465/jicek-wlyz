@@ -135,6 +135,18 @@ export function patch<T = unknown>(
   });
 }
 
+/** PUT 便捷方法 */
+export function put<T = unknown>(
+  user: SessionUser | null,
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  return request<T>(user, path, {
+    method: "PUT",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
 /** DELETE 便捷方法 */
 export function del<T = unknown>(
   user: SessionUser | null,

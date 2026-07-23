@@ -336,3 +336,41 @@ export async function markOrderFailed(orderId: string): Promise<void> {
     await increaseStock(tx, order.product_id, 1);
   });
 }
+
+/**
+ * 列出全部订单（超管后台用）
+ *
+ * include product + buyer，按 created_at desc，支持 status / buyerId 过滤。
+ */
+export async function listAllOrders(options: {
+  status?: string;
+  buyerId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ orders: Awaited<ReturnType<typeof prisma.order.findMany>>; total: number }> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+
+  const where: {
+    status?: string;
+    buyer_id?: string;
+  } = {};
+  if (options.status) where.status = options.status;
+  if (options.buyerId) where.buyer_id = options.buyerId;
+
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      include: {
+        product: true,
+        buyer: { select: { id: true, email: true, nickname: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.order.count({ where }),
+  ]);
+
+  return { orders, total };
+}

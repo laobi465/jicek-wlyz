@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.1.0 ｜ 状态：M8.0 Web 前端核心 UI 框架完成 ｜ 最后更新：2026-07-23
+> 版本：1.2.0 ｜ 状态：M8.1 开发者管理页完成 ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -21,7 +21,7 @@
 | M7 | 安全加固 + 上线 | 签名防篡改全链路 + 限流 + 审计日志 + 上线 | 已完成 |
 | M8 | Web 前端 UI | 三角色 Web 界面（开发者/代理/超管）+ 登录注册 + 仪表盘 + 工单 + 通知 + 签到 | 进行中 |
 
-> M8 拆分：M8.0 核心 UI 框架（本次交付：基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 共享工单/通知/签到闭环）→ M8.1 开发者管理页（应用/卡密/设备/云变量/APK 注入/接入中心/店铺/套餐）→ M8.2 代理管理页（下级/邀请码/提现）→ M8.3 超管管理页（用户/业务/收入/提现审核/系统配置/审计/2FA/IP 白名单/更新面板）。
+> M8 拆分：M8.0 核心 UI 框架（已交付 v1.1.0：基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 共享工单/通知/签到闭环）→ M8.1 开发者管理页（已交付 v1.2.0：应用/卡密/设备/云变量/APK 注入/接入中心/店铺/套餐）→ M8.2 代理管理页（下级/邀请码/提现）→ M8.3 超管管理页（用户/业务/收入/提现审核/系统配置/审计/2FA/IP 白名单/更新面板）。
 
 ### 1.2 版本路线图
 
@@ -38,6 +38,7 @@
 | 1.0.0 | M7 安全加固 + 正式上线 | 已完成 |
 | 1.0.1 | 构建修复（Next.js 16 proxy 适配 + redis/auth 惰性初始化） | 已完成 |
 | 1.1.0 | M8.0 Web 前端核心 UI 框架（基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 工单/通知/签到闭环） | 已完成 |
+| 1.2.0 | M8.1 开发者管理页（官网营销页 + 应用/卡密/设备/云变量/APK注入/接入中心/店铺/套餐 8 模块 + 后端 web API 路由层补全） | 已完成 |
 
 ### 1.3 风险与依赖清单
 
@@ -362,14 +363,37 @@ src/
 │   │   │   └── [ticketId]/page.tsx
 │   │   ├── notifications/page.tsx
 │   │   ├── checkin/page.tsx
-│   │   ├── developer/          # 开发者专属（M8.1 扩展）
-│   │   │   └── page.tsx        # 开发者仪表盘
+│   │   ├── developer/          # 开发者专属（M8.1 已完成）
+│   │   │   ├── page.tsx        # 开发者仪表盘
+│   │   │   ├── apps/           # 应用管理（列表/创建/详情编辑）
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── new/page.tsx
+│   │   │   │   └── [appId]/page.tsx
+│   │   │   ├── cards/          # 卡密管理（列表/生成/详情）
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── generate/page.tsx
+│   │   │   │   └── [cardId]/page.tsx
+│   │   │   ├── devices/        # 设备管理（列表/详情）
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [deviceId]/page.tsx
+│   │   │   ├── cloud-variables/page.tsx  # 云变量（选应用+列表+Modal编辑）
+│   │   │   ├── apk-injection/  # APK 注入（列表/上传/详情轮询）
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── upload/page.tsx
+│   │   │   │   └── [taskId]/page.tsx
+│   │   │   ├── access/page.tsx # 接入中心（流程向导+代码生成+测试连接）
+│   │   │   ├── shop/           # 店铺商品（列表/详情+商品CRUD）
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [shopId]/page.tsx
+│   │   │   └── packages/       # 套餐充值（列表/订阅/订单记录）
+│   │   │       ├── page.tsx
+│   │   │       └── orders/page.tsx
 │   │   ├── agent/              # 代理专属（M8.2 扩展）
 │   │   │   └── page.tsx        # 代理仪表盘
 │   │   └── admin/              # 超管专属（M8.3 扩展）
 │   │       └── page.tsx        # 超管仪表盘
 │   ├── layout.tsx              # 根布局（字体 + AuthProvider + ToastProvider）
-│   └── page.tsx                # 首页：已登录跳 /dashboard，未登录跳 /login
+│   └── page.tsx                # 官网营销页（Hero+核心特性+SDK展示+注册CTA+登录态感知导航）
 ├── components/
 │   ├── ui/                     # UI 原子组件（不引外部库）
 │   │   ├── button.tsx
@@ -414,7 +438,7 @@ src/
 - `code === 8408` (SESSION_EXPIRED) → 跳 `/login`
 - 其他 → throw `{ code, msg }`，由调用方 Toast 提示
 
-#### M8.0 交付范围（本次，已交付 v1.1.0）
+#### M8.0 交付范围（已交付 v1.1.0）
 | 模块 | 页面 | 对接 API |
 |---|---|---|
 | 基础 | 根 layout + 主题 + AuthProvider + ToastProvider | — |
@@ -429,8 +453,22 @@ src/
 | 通知 | /notifications | GET /api/notifications, POST /api/notifications/read |
 | 签到 | /checkin | GET/POST /api/checkin, GET /api/checkin/records |
 
-#### M8.1 / M8.2 / M8.3 待实现（后续会话）
-- M8.1 开发者管理页：应用 / 卡密 / 设备 / 云变量 / APK 注入 / 接入中心 / 店铺 / 套餐充值
+#### M8.1 交付范围（已交付 v1.2.0）
+| 模块 | 页面 | 对接 API |
+|---|---|---|
+| 官网 | /（Hero+核心特性+SDK展示+注册CTA+登录态感知导航） | — |
+| 应用 | /developer/apps, /new, /[appId] | GET/POST/PATCH/DELETE /api/apps/**, POST regenerate-signature |
+| 卡密 | /developer/cards, /generate, /[cardId] | GET /api/card-keys, POST /generate, GET /[cardId], POST revoke/blacklist |
+| 设备 | /developer/devices, /[deviceId] | GET /api/devices, GET /[deviceId], POST blacklist/unbind |
+| 云变量 | /developer/cloud-variables（选应用+Modal CRUD） | GET/POST /api/apps/[appId]/cloud-variables, PUT/DELETE /[key] |
+| APK注入 | /developer/apk-injection, /upload, /[taskId] | GET /api/apk-injection/tasks, POST upload, GET /[taskId], POST cancel, GET download |
+| 接入中心 | /developer/access（流程向导+代码生成+测试连接） | GET /api/access/languages, POST generate-code, POST test-connection |
+| 店铺商品 | /developer/shop, /[shopId] | GET/POST/PATCH/DELETE /api/shops/**, /api/products/[productId] |
+| 套餐充值 | /developer/packages, /orders | GET /api/packages, POST subscribe, GET /api/user-packages, /active |
+
+> 后端 web API 路由层补全：apps / card-keys / devices / cloud-variables / shops / products / packages / user-packages / orders 共 30+ 路由，service 补 listAppsByDeveloper / getAppById / disableApp / listCards / deleteCard / listDevices / getDeviceById / deleteVariable / getShop / deleteShop / deleteProduct / updatePackage / listAllOrders 方法（手写校验非 zod，对标现有路由风格）。
+
+#### M8.2 / M8.3 待实现（后续会话）
 - M8.2 代理管理页：下级代理 / 邀请码 / 佣金明细 / 提现申请
 - M8.3 超管管理页：用户管理 / 业务总览 / 收入明细 / 提现审核 / 工单客服 / 系统配置 / 审计日志 / 2FA / IP 白名单 / 更新面板
 

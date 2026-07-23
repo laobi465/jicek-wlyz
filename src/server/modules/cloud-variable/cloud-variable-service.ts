@@ -101,3 +101,12 @@ export function verifyVariableSignature(
   const { rsaVerify } = require('@/lib/crypto/rsa') as typeof import('@/lib/crypto/rsa');
   return rsaVerify(publicKey, original, variable.signature);
 }
+
+/**
+ * 删除云变量（按 app_id + key，不存在不报错）
+ */
+export async function deleteVariable(appId: string, key: string): Promise<void> {
+  await prisma.cloudVariable.deleteMany({
+    where: { app_id: appId, key },
+  });
+}

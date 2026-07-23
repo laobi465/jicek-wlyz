@@ -325,3 +325,39 @@ export async function markExpiredPackages(): Promise<number> {
   });
   return result.count;
 }
+
+/**
+ * 更新套餐（超管后台用）
+ */
+export async function updatePackage(
+  packageId: string,
+  params: Partial<{
+    name: string;
+    description: string;
+    price: number;
+    appQuota: number;
+    cardQuota: number;
+    sortOrder: number;
+    status: string;
+  }>,
+) {
+  if (params.price !== undefined && params.price < 0) {
+    throw new Error('待接入：套餐价格必须 ≥ 0');
+  }
+  if ((params.appQuota !== undefined && params.appQuota < 0) ||
+      (params.cardQuota !== undefined && params.cardQuota < 0)) {
+    throw new Error('待接入：套餐额度必须 ≥ 0');
+  }
+  return prisma.package.update({
+    where: { id: packageId },
+    data: {
+      ...(params.name !== undefined ? { name: params.name } : {}),
+      ...(params.description !== undefined ? { description: params.description } : {}),
+      ...(params.price !== undefined ? { price: params.price } : {}),
+      ...(params.appQuota !== undefined ? { app_quota: params.appQuota } : {}),
+      ...(params.cardQuota !== undefined ? { card_quota: params.cardQuota } : {}),
+      ...(params.sortOrder !== undefined ? { sort_order: params.sortOrder } : {}),
+      ...(params.status !== undefined ? { status: params.status } : {}),
+    },
+  });
+}

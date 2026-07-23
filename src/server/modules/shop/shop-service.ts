@@ -294,3 +294,57 @@ export async function increaseStock(
     data: { stock: { increment: count } },
   });
 }
+
+/**
+ * 查询店铺详情（可选校验归属）
+ *
+ * 传入 developerId 时归属不匹配返回 null。include 商品计数。
+ */
+export async function getShop(
+  shopId: string,
+  developerId?: string,
+) {
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    include: { _count: { select: { products: true } } },
+  });
+  if (!shop) return null;
+  if (developerId && shop.developer_id !== developerId) {
+    return null;
+  }
+  return shop;
+}
+
+/**
+ * 删除店铺（校验归属；仍有在售商品时抛错）
+ */
+export async function deleteShop(shopId: string, developerId: string): Promise<void> {
+  const shop = await getShop(shopId, developerId);
+  if (!shop) {
+    throw new Error('待接入：店铺不存在或无权操作');
+  }
+  const onSaleCount = await prisma.product.count({
+    where: { shop_id: shopId, status: 'on_sale' },
+  });
+  if (onSaleCount > 0) {
+    throw new Error('待接入：店铺仍有在售商品，无法删除');
+  }
+  await prisma.shop.delete({ where: { id: shopId } });
+}
+
+/**
+ * 删除商品（通过 product.shop.developer_id 校验归属）
+ */
+export async function deleteProduct(productId: string, developerId: string): Promise<void> {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { shop: { select: { developer_id: true } } },
+  });
+  if (!product) {
+    throw new Error('待接入：商品不存在');
+  }
+  if (product.shop.developer_id !== developerId) {
+    throw new Error('待接入：无权操作他人商品');
+  }
+  await prisma.product.delete({ where: { id: productId } });
+}

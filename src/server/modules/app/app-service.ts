@@ -188,3 +188,62 @@ export async function regenerateConfigSignature(appId: string): Promise<string> 
 
   return signature;
 }
+
+/**
+ * 列出开发者的应用（开发者后台用）
+ *
+ * 按 developer_id 查询，支持 status 过滤与分页，include 设备/卡密计数。
+ */
+export async function listAppsByDeveloper(
+  developerId: string,
+  options?: { status?: string; limit?: number; offset?: number },
+): Promise<{ apps: Awaited<ReturnType<typeof prisma.app.findMany>>; total: number }> {
+  const limit = Math.min(Math.max(options?.limit ?? 20, 1), 100);
+  const offset = Math.max(options?.offset ?? 0, 0);
+
+  const where: { developer_id: string; status?: string } = { developer_id: developerId };
+  if (options?.status) {
+    where.status = options.status;
+  }
+
+  const [apps, total] = await Promise.all([
+    prisma.app.findMany({
+      where,
+      include: { _count: { select: { devices: true, card_keys: true } } },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.app.count({ where }),
+  ]);
+
+  return { apps, total };
+}
+
+/**
+ * 按 ID 查询应用（可选校验归属）
+ *
+ * 传入 developerId 时，归属不匹配返回 null（隐藏存在性）。
+ */
+export async function getAppById(appId: string, developerId?: string) {
+  const app = await prisma.app.findUnique({ where: { id: appId } });
+  if (!app) return null;
+  if (developerId && app.developer_id !== developerId) {
+    return null;
+  }
+  return app;
+}
+
+/**
+ * 停用应用（校验归属后置 status='disabled'）
+ */
+export async function disableApp(appId: string, developerId: string) {
+  const app = await getAppById(appId, developerId);
+  if (!app) {
+    throw new Error('待接入：应用不存在或无权操作');
+  }
+  return prisma.app.update({
+    where: { id: appId },
+    data: { status: 'disabled' },
+  });
+}

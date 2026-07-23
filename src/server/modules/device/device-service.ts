@@ -173,3 +173,51 @@ export async function getDeviceByMachineCode(
     },
   });
 }
+
+/**
+ * 列出设备（开发者后台用，多条件过滤）
+ *
+ * 支持 appId / status / cardKeyId 过滤，include app，按 last_heartbeat desc。
+ */
+export async function listDevices(options: {
+  appId?: string;
+  status?: string;
+  cardKeyId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ devices: Awaited<ReturnType<typeof prisma.device.findMany>>; total: number }> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+
+  const where: {
+    app_id?: string;
+    status?: string;
+    card_key_id?: string;
+  } = {};
+  if (options.appId) where.app_id = options.appId;
+  if (options.status) where.status = options.status;
+  if (options.cardKeyId) where.card_key_id = options.cardKeyId;
+
+  const [devices, total] = await Promise.all([
+    prisma.device.findMany({
+      where,
+      include: { app: true },
+      orderBy: { last_heartbeat: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.device.count({ where }),
+  ]);
+
+  return { devices, total };
+}
+
+/**
+ * 按 ID 查询设备（include app，便于路由层校验归属）
+ */
+export async function getDeviceById(deviceId: string) {
+  return prisma.device.findUnique({
+    where: { id: deviceId },
+    include: { app: true },
+  });
+}

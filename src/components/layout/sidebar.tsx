@@ -10,11 +10,11 @@ import type { UserRole } from "@/lib/auth-client";
  *
  * 三角色共享入口：仪表盘 / 工单 / 通知 / 签到
  * 角色专属入口：
- * - developer: 应用 / 卡密 / 设备 / 云变量 / APK 注入 / 接入中心 / 店铺 / 套餐（M8.1）
+ * - developer: 应用 / 卡密 / 设备 / 云变量 / APK 注入 / 接入中心 / 店铺 / 套餐（M8.1 已完成）
  * - agent: 下级代理 / 邀请码 / 提现 / 佣金（M8.2）
  * - super_admin: 用户管理 / 业务总览 / 收入 / 提现审核 / 系统配置 / 审计 / 更新（M8.3）
  *
- * M8.1/M8.2/M8.3 子页面尚未实现，先显示"敬请期待"占位（非假数据，仅文字提示）
+ * M8.2/M8.3 子页面尚未实现，先显示"敬请期待"占位（非假数据，仅文字提示）
  */
 
 interface NavItem {
@@ -35,14 +35,14 @@ const COMMON_NAV: NavItem[] = [
 
 const DEVELOPER_NAV: NavItem[] = [
   { href: "/developer", label: "开发者概览" },
-  { href: "/developer/apps", label: "应用管理", comingSoon: true },
-  { href: "/developer/cards", label: "卡密管理", comingSoon: true },
-  { href: "/developer/devices", label: "设备管理", comingSoon: true },
-  { href: "/developer/cloud-variables", label: "云变量", comingSoon: true },
-  { href: "/developer/apk-injection", label: "APK 注入", comingSoon: true },
-  { href: "/developer/access", label: "接入中心", comingSoon: true },
-  { href: "/developer/shop", label: "店铺商品", comingSoon: true },
-  { href: "/developer/packages", label: "套餐充值", comingSoon: true },
+  { href: "/developer/apps", label: "应用管理" },
+  { href: "/developer/cards", label: "卡密管理" },
+  { href: "/developer/devices", label: "设备管理" },
+  { href: "/developer/cloud-variables", label: "云变量" },
+  { href: "/developer/apk-injection", label: "APK 注入" },
+  { href: "/developer/access", label: "接入中心" },
+  { href: "/developer/shop", label: "店铺商品" },
+  { href: "/developer/packages", label: "套餐充值" },
 ];
 
 const AGENT_NAV: NavItem[] = [

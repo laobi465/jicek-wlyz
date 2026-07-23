@@ -144,3 +144,61 @@ export async function getCardById(cardId: string) {
     include: { app: true },
   });
 }
+
+/**
+ * 列出卡密（开发者后台用，多条件过滤）
+ *
+ * 支持 appId / issuerId / status / templateId 过滤，include app，按 created_at desc。
+ */
+export async function listCards(options: {
+  appId?: string;
+  issuerId?: string;
+  status?: string;
+  templateId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ cards: Awaited<ReturnType<typeof prisma.cardKey.findMany>>; total: number }> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+
+  const where: {
+    app_id?: string;
+    issuer_id?: string;
+    status?: string;
+    template_id?: string;
+  } = {};
+  if (options.appId) where.app_id = options.appId;
+  if (options.issuerId) where.issuer_id = options.issuerId;
+  if (options.status) where.status = options.status;
+  if (options.templateId) where.template_id = options.templateId;
+
+  const [cards, total] = await Promise.all([
+    prisma.cardKey.findMany({
+      where,
+      include: { app: true },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.cardKey.count({ where }),
+  ]);
+
+  return { cards, total };
+}
+
+/**
+ * 物理删除卡密（仅 unused 状态可删，其他状态抛错）
+ */
+export async function deleteCard(cardId: string): Promise<void> {
+  const card = await prisma.cardKey.findUnique({
+    where: { id: cardId },
+    select: { status: true },
+  });
+  if (!card) {
+    throw new Error('待接入：卡密不存在');
+  }
+  if (card.status !== 'unused') {
+    throw new Error('待接入：仅未使用卡密可删除');
+  }
+  await prisma.cardKey.delete({ where: { id: cardId } });
+}
