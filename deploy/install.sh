@@ -138,10 +138,23 @@ wait_for_app_healthy() {
 # 前置条件：db 容器已启动且健康
 create_db_schema() {
     info "创建数据库表结构（prisma db push）..."
-    if docker compose run --rm --no-deps app npx prisma db push --skip-generate; then
+    # 用 node 直接调用 prisma CLI 入口（standalone 镜像无 npx/.bin 符号链接，npx 会尝试联网下载失败）
+    # 捕获完整输出到日志文件——docker compose logs 看不到 run --rm 已删除容器的输出
+    local schema_log="/tmp/jicek-schema.log"
+    if docker compose run --rm --no-deps app \
+        node /app/node_modules/prisma/build/index.js db push \
+        --schema=/app/prisma/schema.prisma --skip-generate \
+        > "${schema_log}" 2>&1; then
         info "数据库表结构创建成功"
+        tail -3 "${schema_log}"
     else
-        error "数据库表结构创建失败"
+        local rc=$?
+        error "数据库表结构创建失败（退出码 ${rc}），prisma 完整输出："
+        echo "----------------------------------------"
+        cat "${schema_log}"
+        echo "----------------------------------------"
+        echo
+        echo "db/redis 容器最近日志："
         dump_logs
         exit 1
     fi

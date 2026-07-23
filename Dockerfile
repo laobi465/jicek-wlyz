@@ -48,8 +48,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # 复制 Prisma 生成客户端（standalone 未必完整追踪引擎二进制）
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
-# 复制 prisma CLI + schema，供容器内手动执行 prisma 命令（如手动创建表）
+# 复制 prisma CLI + schema，供容器内执行 prisma 命令（建表/init-admin 依赖）
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+# 复制 prisma CLI 的 .bin 符号链接（standalone 产物不含 .bin，导致 npx prisma 找不到本地包）
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 # 复制初始化脚本（创建默认超管 admin@example.com/admin123）
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
@@ -58,5 +60,5 @@ USER nextjs
 # 端口由运行时 PORT 环境变量决定（默认 3000）
 EXPOSE 3000
 # 容器启动时：1) init-admin 创建默认超管 2) 启动 Next.js server
-# 注意：数据库表需在部署前手动创建（docker compose exec app npx prisma db push）
+# 注意：数据库表由 install.sh 通过 docker compose run 临时容器自动创建（prisma db push）
 CMD ["sh", "-c", "node scripts/init-admin.mjs && node server.js"]

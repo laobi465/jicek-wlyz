@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.5.3 ｜ 状态：优化一键安装脚本（自动建表 + 子命令 + 幂等 + 失败打日志） ｜ 最后更新：2026-07-23
+> 版本：1.5.4 ｜ 状态：修复一键安装建表失败（prisma CLI 调用方式 + 诊断输出） ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -45,6 +45,7 @@
 | 1.5.1 | 移除 /setup 安装向导（删除前端页 + /api/setup 路由 + setup-service）→ 改为容器启动时执行 `scripts/init-admin.mjs` 自动创建默认超管 `admin@example.com/admin123`（幂等：已存在超管则跳过）+ Dockerfile CMD 集成 init-admin 步骤 + install.sh 输出默认账密 | 已完成 |
 | 1.5.2 | 移除容器启动自动同步表结构（Dockerfile CMD 删除 `npx prisma db push --skip-generate`，改为仅 `node scripts/init-admin.mjs && node server.js`）+ install.sh/README 文档移除"同步表结构"描述，表结构改为部署前手动创建（`docker compose exec app npx prisma db push`） | 已完成 |
 | 1.5.3 | 优化一键安装脚本 deploy/install.sh：① 自动建表（恢复一键体验，db 就绪后 `docker compose run --rm --no-deps app npx prisma db push --skip-generate`，无需手动建表）② 子命令支持（install 默认幂等 / update 拉新镜像+同步表+重启 / uninstall 停删容器保留数据卷 / reinstall 保留 .env 重装 / --help）③ 幂等检测（已安装且运行中则提示引导子命令，不重复安装）④ 失败自动打日志（db/app 健康检查失败、建表失败时自动 `docker compose logs --tail=50`）⑤ 分步启动（db+redis → wait db healthy → 建表 → app+apk-injector → wait app healthy）⑥ set -euo pipefail 健壮性 ⑦ shellcheck 通过（仅剩 SC1091 不可避免 info） | 已完成 |
+| 1.5.4 | 修复一键安装建表失败：① install.sh create_db_schema 改用 `node /app/node_modules/prisma/build/index.js` 直接调用 prisma CLI（替代 `npx prisma`——standalone 镜像无 node_modules/.bin 符号链接，npx 找不到本地 prisma 包会尝试联网下载失败）② 捕获 prisma 完整输出到 /tmp/jicek-schema.log，失败时 cat 显示（docker compose logs 看不到 run --rm 已删除容器的输出，导致看不到真正错误）③ Dockerfile runner 阶段补充 COPY node_modules/.bin/prisma（让 npx prisma 也能用）④ 清理 Dockerfile 重复的 @prisma/.prisma COPY ⑤ CMD 注释更新为"表由 install.sh 自动创建" | 已完成 |
 
 ### 1.3 风险与依赖清单
 
