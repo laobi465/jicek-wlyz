@@ -259,6 +259,7 @@ model CardTemplate {
   // 关系
   app             App      @relation(fields: [app_id], references: [id], onDelete: Cascade)
   card_keys       CardKey[]
+  products        Product[]
 
   @@index([app_id])
   @@map("card_templates")
@@ -482,6 +483,7 @@ model Product {
 
   // 关系
   shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+  card_template   CardTemplate? @relation(fields: [card_template_id], references: [id])
   orders          Order[]
 
   @@index([shop_id])
@@ -783,4 +785,46 @@ model SystemConfig {
 
   @@index([group])
   @@map("system_configs")
+}
+
+// ===========================================================================
+// 11. 提现申请模块（M3 商业化能力）
+// ===========================================================================
+
+/// 提现申请表（代理佣金提现，1 元起，T+1 日结）
+model Withdrawal {
+  id              String   @id @default(cuid())
+
+  /// 申请人（代理 User ID）
+  agent_id        String   @map("agent_id")
+
+  /// 提现金额
+  amount          Decimal  @db.Decimal(10, 2)
+
+  /// 状态：pending 待审核 / approved 已通过 / rejected 已驳回 / paid 已打款
+  status          String   @default("pending") // pending | approved | rejected | paid
+
+  /// 收款账户信息（JSON：{type: alipay|wxpay|bank, account, name, bank?}）
+  payout_account  String   @map("payout_account") @db.Text
+
+  /// 审核人 ID（超管）
+  reviewer_id     String?  @map("reviewer_id")
+
+  /// 驳回原因
+  reject_reason   String?  @map("reject_reason") @db.Text
+
+  /// 第三方打款流水号
+  payout_trade_no String?  @map("payout_trade_no")
+
+  /// 审核时间
+  reviewed_at     DateTime? @map("reviewed_at")
+  /// 打款时间
+  paid_at         DateTime? @map("paid_at")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  @@index([agent_id])
+  @@index([status])
+  @@map("withdrawals")
 }
