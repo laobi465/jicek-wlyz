@@ -65,9 +65,11 @@ bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/depl
 
 1. 访问宝塔面板（端口见配置文件）
 2. 在宝塔「Docker」中确认 4 个容器正常运行（app / db / redis / apk-injector）
-3. 访问应用地址 `/setup`（如 `http://服务器IP:端口/setup`），进入**首次安装向导**
-4. 在向导中设置超级管理员账号（用户名 + 邮箱 + 密码）
-5. 使用刚创建的超管账号登录 `/login`，进入超管后台 `/admin`
+3. 访问应用地址（如 `http://服务器IP:端口`），使用**默认超管账号**登录：
+   - 邮箱：`admin@example.com`
+   - 密码：`admin123`
+4. 登录后进入超管后台 `/admin`
+5. **立即**在超管后台「安全」页面修改默认密码（默认密码较弱，存在安全风险）
 6. 在超管后台「系统配置」中依次配置：
    - 彩虹易支付商户号
    - 对象存储（七牛 / 阿里 OSS / Cloudflare R2）
@@ -76,7 +78,7 @@ bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/depl
    - 套餐定价
    - 数据库备份周期
 
-> 说明：首次安装向导仅在数据库无超管时可用；创建首个超管后该入口自动失效，后续超管由已登录超管在「用户管理」中分配角色。
+> 说明：默认超管账号由 app 容器首次启动时自动创建（`scripts/init-admin.mjs`，幂等：已存在超管则跳过）。后续超管由已登录超管在「用户管理」中分配角色。
 
 ### 手动部署（进阶）
 
@@ -108,7 +110,7 @@ npm run build
 npm start
 ```
 
-启动后访问 `http://localhost:3000/setup` 进入首次安装向导创建超管账号。
+启动后 app 容器会自动执行 `prisma db push` 同步表结构 + `node scripts/init-admin.mjs` 创建默认超管账号 `admin@example.com / admin123`，访问 `http://localhost:3000` 即可登录。
 
 ### Docker Compose 部署
 

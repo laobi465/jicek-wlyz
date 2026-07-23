@@ -51,10 +51,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modul
 # 复制 prisma CLI + schema，运行时执行 db push 同步表结构
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+# 复制初始化脚本（创建默认超管 admin@example.com/admin123）
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
 USER nextjs
 # 端口由运行时 PORT 环境变量决定（默认 3000）
 EXPOSE 3000
-# 容器启动时先执行 prisma db push 同步表结构，再启动 Next.js server
-# --accept-data-loss 仅在无已有表时创建，不会破坏已有数据（生产环境仍建议优先用 migrate）
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]
+# 容器启动时：1) prisma db push 同步表结构 2) init-admin 创建默认超管 3) 启动 Next.js server
+# --skip-generate 仅在无已有表时创建，不会破坏已有数据（生产环境仍建议优先用 migrate）
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node scripts/init-admin.mjs && node server.js"]

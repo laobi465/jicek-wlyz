@@ -52,7 +52,7 @@ function createAuth(): AuthInstance {
    * access control + roles 对象（带 newRole），权限模型过重。
    * 本系统的超管鉴权全部走自研 /api/admin/* 路由（X-User-Role 头校验），
    * Better Auth 仅负责邮箱密码注册/登录/session，role 字段通过
-   * user.additionalFields 声明（注册时默认 developer，由 setup/超管修改）。
+   * user.additionalFields 声明（注册时默认 developer，由超管修改）。
    */
   return betterAuth({
     secret: betterAuthSecret,

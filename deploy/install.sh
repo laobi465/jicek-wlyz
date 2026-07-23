@@ -274,9 +274,11 @@ BETTER_AUTH_SECRET : ${BETTER_AUTH_SECRET}
 宝塔面板端口 : ${BT_PORT}
 --------------------------------------------
 访问地址     : http://${public_ip}:${APP_PORT}
-首次安装     : http://${public_ip}:${APP_PORT}/setup
+超管账号     : admin@example.com
+超管密码     : admin123
 宝塔面板     : http://${public_ip}:${BT_PORT}
 ============================================
+⚠️ 默认密码较弱，请登录后立即在「安全」页面修改密码！
 EOF
     chmod 600 "${DEPLOY_INFO_FILE}"
 
@@ -285,11 +287,13 @@ EOF
     echo -e "${CYAN}  部署完成！${NC}"
     echo -e "${CYAN}============================================${NC}"
     echo -e "${GREEN}访问地址 :${NC} http://${public_ip}:${APP_PORT}"
+    echo -e "${GREEN}超管账号 :${NC} admin@example.com"
+    echo -e "${GREEN}超管密码 :${NC} admin123"
     echo -e "${GREEN}宝塔面板 :${NC} http://${public_ip}:${BT_PORT}"
     echo -e "${GREEN}部署信息 :${NC} 已保存至 ${DEPLOY_INFO_FILE}"
     echo -e "${GREEN}部署目录 :${NC} ${DEPLOY_DIR}"
     echo
-    echo -e "${YELLOW}提示：${NC}请妥善保管 ${DEPLOY_INFO_FILE}，其中包含数据库与 Redis 密码等敏感信息。"
+    echo -e "${YELLOW}提示：${NC}默认密码较弱，请登录后立即修改！${DEPLOY_INFO_FILE} 包含数据库与 Redis 密码等敏感信息，请妥善保管。"
     echo
     echo -e "${YELLOW}脚本托管地址：${NC}${SCRIPT_URL}"
     echo
