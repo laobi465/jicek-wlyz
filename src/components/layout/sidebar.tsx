@@ -76,14 +76,67 @@ const ROLE_LABEL: Record<UserRole, string> = {
   super_admin: "超级管理员",
 };
 
-export function Sidebar() {
+export function Sidebar({
+  mobileNavOpen,
+  onMobileNavClose,
+}: {
+  mobileNavOpen?: boolean;
+  onMobileNavClose?: () => void;
+}) {
   const { user } = useAuth();
   const pathname = usePathname();
   const role = (user?.role as UserRole) ?? "developer";
   const roleNav = ROLE_NAV[role] ?? [];
 
   return (
-    <aside className="hidden md:flex md:flex-col w-56 shrink-0 border-r border-border bg-white h-screen sticky top-0">
+    <>
+      {/* 桌面端：常驻侧边栏（>= md 显示） */}
+      <aside className="hidden md:flex md:flex-col w-56 shrink-0 border-r border-border bg-white h-screen sticky top-0">
+        <SidebarContent role={role} pathname={pathname} roleNav={roleNav} />
+      </aside>
+
+      {/* 移动端：抽屉式侧边栏（< md，由顶栏汉堡按钮触发） */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          {/* 遮罩：点击关闭 */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={onMobileNavClose}
+            aria-hidden="true"
+          />
+          {/* 抽屉本体：从左侧滑入 */}
+          <aside className="absolute left-0 top-0 h-full w-64 bg-white flex flex-col shadow-xl">
+            <SidebarContent
+              role={role}
+              pathname={pathname}
+              roleNav={roleNav}
+              onNavigate={onMobileNavClose}
+            />
+          </aside>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * 侧边栏内容（桌面常驻与移动抽屉复用）
+ *
+ * onNavigate 仅移动抽屉传入：点击导航项后关闭抽屉。
+ */
+function SidebarContent({
+  role,
+  pathname,
+  roleNav,
+  onNavigate,
+}: {
+  role: UserRole;
+  pathname: string;
+  roleNav: NavItem[];
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
       <div className="px-5 py-5 border-b border-border">
         <h1 className="text-base font-semibold text-foreground">
           网络验证控制台
@@ -94,10 +147,20 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3">
-        <NavSection title="通用" items={COMMON_NAV} pathname={pathname} />
-        <NavSection title={ROLE_LABEL[role]} items={roleNav} pathname={pathname} />
+        <NavSection
+          title="通用"
+          items={COMMON_NAV}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
+        <NavSection
+          title={ROLE_LABEL[role]}
+          items={roleNav}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
       </nav>
-    </aside>
+    </>
   );
 }
 
@@ -105,10 +168,12 @@ function NavSection({
   title,
   items,
   pathname,
+  onNavigate,
 }: {
   title: string;
   items: NavItem[];
   pathname: string;
+  onNavigate?: () => void;
 }) {
   return (
     <div className="mb-4">
@@ -138,7 +203,7 @@ function NavSection({
           }
           return (
             <li key={item.href}>
-              <Link href={item.href} className={cls}>
+              <Link href={item.href} className={cls} onClick={onNavigate}>
                 <span>{item.label}</span>
               </Link>
             </li>

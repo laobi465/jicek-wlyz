@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.6.4 ｜ 状态：修复更新面板 git: not found——update-service 适配 Docker 部署 ｜ 最后更新：2026-07-23
+> 版本：1.6.5 ｜ 状态：修复移动端左上角汉堡菜单点击无反应——实现侧边栏抽屉 ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -53,6 +53,7 @@
 | 1.6.2 | 修复登录"无效来源"错误：Better Auth 校验请求 Origin 头与 baseURL（来自 BETTER_AUTH_URL 环境变量）是否匹配，不匹配则拒绝登录返回"无效来源"。原 install.sh generate_env 将 BETTER_AUTH_URL 设为 `http://localhost:${APP_PORT}`，用户通过公网 IP 访问导致浏览器 Origin 头与 baseURL 的 localhost 不匹配被拒。修复：generate_env 改用 get_public_ip 获取公网 IP，BETTER_AUTH_URL 设为 `http://${public_ip}:${APP_PORT}` 使 baseURL 与实际访问地址一致。已部署环境 reinstall/update 保留旧 .env，需手动改 `/opt/jicek-wlyz/.env` 的 BETTER_AUTH_URL 为 `http://<服务器IP>:<端口>` 后 `docker compose restart app` | 已完成 |
 | 1.6.3 | 修复开发者和管理员后台侧边栏点击无反应问题：proxy.ts 全局 IP 限流（100 req/min/IP，§2.6.4 第 6 项）未豁免已认证用户的后台浏览，一次侧边栏点击产生 4~5 个伴随请求（HTML + get-session + unread-count + 业务 API + RSC prefetch），1 分钟内撑爆 100 限制，Next.js 客户端路由收到 429 JSON 后静默失败 → 用户表现为"侧边栏点击无反应"。修复：proxy.ts 三层豁免——① HTML 页面（非 `/api/` 路径）一律豁免 ② 内部高频 API 前缀豁免（`/api/auth/` `/api/notifications/` `/api/health` `/api/webhooks/`） ③ 携带 Better Auth session cookie 的已认证请求豁免（cookie 由服务端 HMAC 签名不可伪造，即使伪造绕过限流后续 API 仍会被 Better Auth 拒绝 401）。新增 `RATE_LIMIT_SKIP_PREFIXES` 数组 + `isRateLimitSkipped()` + `isAuthenticated()` 函数；移除可被前端伪造的 `X-User-Id` 头检查。同步更新 §2.6.4 第 6 项规范补充豁免规则细节 | 已完成 |
 | 1.6.4 | 修复更新面板 `git: not found`：update-service `getCurrentVersion()` 执行 `git rev-parse HEAD` 在 Docker runner 镜像（无 git 二进制 + 无 .git 目录）抛错导致 `/api/admin/update/check` 500、更新面板顶部红条报错。修复（update-service.ts）：① `getCurrentVersion()` 三级降级不抛错——`DEPLOY_VERSION` 环境变量 → `git rev-parse HEAD` → `"unknown"` ② 新增 `isGitAvailable()` ③ `executeUpdate()`/`rollback()` 开头检测 Docker 模式，git 不可用直接抛明确错误指引到 `bash install.sh update`/`reinstall`，避免 git pull/npm install/prisma migrate 一连串神秘失败 | 已完成 |
+| 1.6.5 | 修复移动端左上角汉堡菜单点击无反应：topbar.tsx 汉堡 `&#9776;` 是占位 `<span>` 无 onClick（注释"M8.0 暂不实现抽屉"），sidebar.tsx `hidden md:flex` 窄屏下侧边栏完全隐藏，用户只看到点了没反应的图标。修复（三文件联动）：① layout.tsx 加 `mobileNavOpen` state ② topbar.tsx `<span>` → `<button onClick={onMenuClick}>` ③ sidebar.tsx 提取 `SidebarContent` 复用，移动端抽屉 `fixed inset-0 z-50`（遮罩点击关闭 + `w-64` 左滑入），点击导航项自动关闭。三角色共享组件一并修复 | 已完成 |
 
 ### 1.3 风险与依赖清单
 
