@@ -73,6 +73,7 @@ model User {
   audit_logs        AuditLog[]
   sessions          Session[]
   accounts          Account[]
+  apk_tasks         ApkInjectionTask[] @relation("ApkTaskSubmitter")
 
   @@map("users")
 }
@@ -827,4 +828,66 @@ model Withdrawal {
   @@index([agent_id])
   @@index([status])
   @@map("withdrawals")
+}
+
+// ===========================================================================
+// 12. APK 注入模块（M5 APK 注入）
+// ===========================================================================
+
+/// APK 注入任务表（开发者上传 APK → BullMQ 异步注入 → 返回新 APK）
+model ApkInjectionTask {
+  id              String   @id @default(cuid())
+
+  /// 提交者（开发者 User ID）
+  submitter_id    String   @map("submitter_id")
+
+  /// 关联应用 ID
+  app_id          String?  @map("app_id")
+
+  /// 原始 APK 文件名
+  original_filename String @map("original_filename")
+
+  /// 原始 APK 对象存储 key
+  original_object_key String @map("original_object_key")
+
+  /// 注入后 APK 对象存储 key
+  injected_object_key String? @map("injected_object_key")
+
+  /// 原始 APK SHA-256（完整性校验）
+  original_sha256 String   @map("original_sha256")
+
+  /// 原始 APK 签名哈希（开发者后台预登记）
+  original_signature_hash String? @map("original_signature_hash")
+
+  /// 注入后 APK SHA-256
+  injected_sha256 String?  @map("injected_sha256")
+
+  /// 文件大小（字节）
+  file_size       BigInt   @map("file_size")
+
+  /// 状态：pending 排队中 / processing 注入中 / success 成功 / failed 失败
+  status          String   @default("pending") // pending | processing | success | failed
+
+  /// 注入配置（JSON：{app_key, server_url, sdk_version, enable_anti_debug, enable_vmp, enable_string_encrypt, ...}）
+  injection_config String  @map("injection_config") @db.Text
+
+  /// 失败原因
+  error_message   String?  @map("error_message") @db.Text
+
+  /// BullMQ 任务 ID
+  job_id          String?  @map("job_id")
+
+  /// 注入耗时（毫秒）
+  duration_ms     Int?     @map("duration_ms")
+
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+  completed_at    DateTime? @map("completed_at")
+
+  // 关系
+  submitter       User     @relation("ApkTaskSubmitter", fields: [submitter_id], references: [id])
+
+  @@index([submitter_id])
+  @@index([status])
+  @@map("apk_injection_tasks")
 }

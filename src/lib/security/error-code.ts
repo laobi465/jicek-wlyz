@@ -49,6 +49,22 @@ export enum ErrorCode {
   SYSTEM_ERROR = 9001,
   /** 服务降级中 */
   SERVICE_DEGRADED = 9002,
+  /** APK 文件格式错误 */
+  APK_FORMAT_INVALID = 8001,
+  /** APK 签名校验失败 */
+  APK_SIGNATURE_INVALID = 8002,
+  /** APK 完整性校验失败 */
+  APK_INTEGRITY_FAILED = 8003,
+  /** APK 注入任务不存在 */
+  APK_TASK_NOT_FOUND = 8004,
+  /** APK 注入任务状态不允许操作 */
+  APK_TASK_STATUS_INVALID = 8005,
+  /** APK 注入失败（apktool/smali/签名错误） */
+  APK_INJECTION_FAILED = 8006,
+  /** APK 文件大小超限 */
+  APK_SIZE_EXCEEDED = 8007,
+  /** APK 注入配置参数非法 */
+  APK_CONFIG_INVALID = 8008,
 }
 
 /** 统一响应体 */
@@ -103,6 +119,14 @@ function errorCodeMsg(code: ErrorCode): string {
     [ErrorCode.AGENT_LEVEL_EXCEEDED]: '代理层级超限',
     [ErrorCode.SYSTEM_ERROR]: '系统内部错误',
     [ErrorCode.SERVICE_DEGRADED]: '服务降级中',
+    [ErrorCode.APK_FORMAT_INVALID]: 'APK 文件格式错误',
+    [ErrorCode.APK_SIGNATURE_INVALID]: 'APK 签名校验失败',
+    [ErrorCode.APK_INTEGRITY_FAILED]: 'APK 完整性校验失败',
+    [ErrorCode.APK_TASK_NOT_FOUND]: 'APK 注入任务不存在',
+    [ErrorCode.APK_TASK_STATUS_INVALID]: 'APK 注入任务状态不允许操作',
+    [ErrorCode.APK_INJECTION_FAILED]: 'APK 注入失败',
+    [ErrorCode.APK_SIZE_EXCEEDED]: 'APK 文件大小超限',
+    [ErrorCode.APK_CONFIG_INVALID]: 'APK 注入配置参数非法',
   };
   return map[code] ?? '未知错误';
 }
