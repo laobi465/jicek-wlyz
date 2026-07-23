@@ -1,6 +1,6 @@
 # jicek-wlyz 规划/规范/开发流程文档（SPEC.md）
 
-> 版本：1.3.0 ｜ 状态：M8.2 代理管理页完成 ｜ 最后更新：2026-07-23
+> 版本：1.4.0 ｜ 状态：M8.3 超管管理页完成 ｜ 最后更新：2026-07-23
 > 维护规则：与 PROJECT.md 同源同步，任何变更联动更新，版本号语义化递增
 
 ---
@@ -19,9 +19,9 @@
 | M5 | APK 注入 | 在线注入工具 + 命令行工具 + SDK 自签名校验 + 反调试 | 已完成 |
 | M6 | 运营能力 | 工单系统 + 数据看板 + 签到 + 通知 | 已完成 |
 | M7 | 安全加固 + 上线 | 签名防篡改全链路 + 限流 + 审计日志 + 上线 | 已完成 |
-| M8 | Web 前端 UI | 三角色 Web 界面（开发者/代理/超管）+ 登录注册 + 仪表盘 + 工单 + 通知 + 签到 | 进行中（M8.0/M8.1/M8.2 已完成） |
+| M8 | Web 前端 UI | 三角色 Web 界面（开发者/代理/超管）+ 登录注册 + 仪表盘 + 工单 + 通知 + 签到 | 进行中（M8.0/M8.1/M8.2/M8.3 已完成） |
 
-> M8 拆分：M8.0 核心 UI 框架（已交付 v1.1.0：基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 共享工单/通知/签到闭环）→ M8.1 开发者管理页（已交付 v1.2.0：应用/卡密/设备/云变量/APK 注入/接入中心/店铺/套餐 + 官网营销页）→ M8.2 代理管理页（已交付 v1.3.0：代理概览/下级代理/邀请码/佣金明细/提现申请 + 后端 web API 路由层补全）→ M8.3 超管管理页（用户/业务/收入/提现审核/系统配置/审计/2FA/IP 白名单/更新面板）。
+> M8 拆分：M8.0 核心 UI 框架（已交付 v1.1.0：基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 共享工单/通知/签到闭环）→ M8.1 开发者管理页（已交付 v1.2.0：应用/卡密/设备/云变量/APK 注入/接入中心/店铺/套餐 + 官网营销页）→ M8.2 代理管理页（已交付 v1.3.0：代理概览/下级代理/邀请码/佣金明细/提现申请 + 后端 web API 路由层补全）→ M8.3 超管管理页（已交付 v1.4.0：超管仪表盘/用户/业务/收入/提现审核/工单客服/系统配置/审计日志/2FA+IP 白名单/更新面板 + 后端 user-service/config-service + 8 API 路由）。
 
 ### 1.2 版本路线图
 
@@ -40,6 +40,7 @@
 | 1.1.0 | M8.0 Web 前端核心 UI 框架（基础布局 + 登录注册 + 鉴权守卫 + 三角色仪表盘 + 工单/通知/签到闭环） | 已完成 |
 | 1.2.0 | M8.1 开发者管理页（官网营销页 + 应用/卡密/设备/云变量/APK注入/接入中心/店铺/套餐 8 模块 + 后端 web API 路由层补全） | 已完成 |
 | 1.3.0 | M8.2 代理管理页（代理概览/下级代理/邀请码/佣金明细/提现申请 5 模块 + 后端 web API 路由层补全 18 路由） | 已完成 |
+| 1.4.0 | M8.3 超管管理页（超管仪表盘/用户/业务/收入/提现审核/工单客服/系统配置/审计日志/2FA+IP 白名单/更新面板 10 模块 + 后端 user-service/config-service + 8 API 路由） | 已完成 |
 
 ### 1.3 风险与依赖清单
 
@@ -395,8 +396,17 @@ src/
 │   │   │   ├── invitations/page.tsx    # 邀请码（列表 + 创建 Modal + code 复制）
 │   │   │   ├── commission/page.tsx     # 佣金明细（4 余额卡片 + 提现记录表格）
 │   │   │   └── withdrawals/page.tsx    # 提现申请（可提现余额 + 记录 + 发起 Modal）
-│   │   └── admin/              # 超管专属（M8.3 扩展）
-│   │       └── page.tsx        # 超管仪表盘
+│   │   └── admin/              # 超管专属（M8.3 已完成）
+│   │       ├── page.tsx                # 超管仪表盘（5 卡片组 + 6 子页快捷入口）
+│   │       ├── users/page.tsx          # 用户管理（筛选 + 封禁/解封 + 角色变更）
+│   │       ├── business/page.tsx       # 业务总览（业务规模 + 工单 + APK 注入 3 卡片组）
+│   │       ├── revenue/page.tsx        # 收入明细（今日/本月/累计 + 最近支付表格）
+│   │       ├── withdrawals/page.tsx    # 提现审核（通过/驳回/打款 + 状态筛选分页）
+│   │       ├── tickets/page.tsx        # 工单客服（status/category 筛选 + 跳转共享详情页）
+│   │       ├── config/page.tsx         # 系统配置（group 筛选 + 加密脱敏 + 编辑 Modal）
+│   │       ├── audit-logs/page.tsx     # 审计日志（3 筛选 + 异常标记 + 详情 Modal）
+│   │       ├── security/page.tsx       # 安全（2FA 状态 + 开启/关闭 + IP 白名单）
+│   │       └── update/page.tsx         # 更新面板（版本检查 + 触发 + 回滚 + 历史日志）
 │   ├── layout.tsx              # 根布局（字体 + AuthProvider + ToastProvider）
 │   └── page.tsx                # 官网营销页（Hero+核心特性+SDK展示+注册CTA+登录态感知导航）
 ├── components/
@@ -484,8 +494,23 @@ src/
 
 > 后端 web API 路由层补全 18 路由：agent 自助 4 路由（profile/balance/subordinates/tree）+ 提现 2 路由（列表+发起 / 详情）+ 邀请码 3 路由（列表+发起 / 详情 / 校验）+ 超管 9 路由（代理列表/详情/状态/佣金比例 + 提现列表/审核/驳回/打款 + 邀请码列表）；service 补 listAllAgents / getAgentById / getWithdrawalById / listWithdrawalsWithTotal / listAllInvitations 方法（手写校验非 zod，路由层捕获 service 错误映射到现有错误码 PERMISSION_DENIED / PARAM_FORMAT / PARAM_MISSING / SYSTEM_ERROR）。
 
-#### M8.3 待实现（后续会话）
-- M8.3 超管管理页：用户管理 / 业务总览 / 收入明细 / 提现审核 / 工单客服 / 系统配置 / 审计日志 / 2FA / IP 白名单 / 更新面板
+#### M8.3 已交付（v1.4.0）
+
+| 模块 | 路由 | 后端依赖 |
+|---|---|---|
+| 超管仪表盘 | /admin（5 卡片组：用户/业务/收入提现/工单/APK 注入 + 6 子页快捷入口） | GET /api/dashboard（super_admin 维度） |
+| 用户管理 | /admin/users（role/status/keyword 筛选 + 分页 + 封禁/解封 ConfirmModal + 角色变更 Modal） | GET /api/admin/users, PATCH /api/admin/users/[userId]/status, PATCH /api/admin/users/[userId]/role |
+| 业务总览 | /admin/business（业务规模/工单分布/APK 注入任务 3 卡片组） | GET /api/dashboard |
+| 收入明细 | /admin/revenue（今日/本月/累计 3 卡片 + 最近支付表格） | GET /api/admin/revenue |
+| 提现审核 | /admin/withdrawals（agentUserId/status 筛选 + 通过/驳回/打款 + 状态条件按钮） | GET /api/admin/withdrawals, POST /[id]/approve, POST /[id]/reject, POST /[id]/paid |
+| 工单客服 | /admin/tickets（status/category 筛选 + 跳转共享 /tickets/[ticketId] 详情） | GET /api/tickets/list（超管看全部） |
+| 系统配置 | /admin/config（group 筛选 payment/storage/email/sms/cdn/backup/general + 加密脱敏 + 编辑 Modal） | GET /api/admin/config, PUT /api/admin/config/[key] |
+| 审计日志 | /admin/audit-logs（action 20 选项/targetType 8 选项/userId 搜索 3 筛选 + 异常标记 + 详情 Modal） | GET /api/audit-logs |
+| 安全 | /admin/security（2FA 状态 + 两阶段开启/关闭 + 全局只读 + 个人 IP 白名单，2FA 开启时显示字段冲突 warning） | GET/POST/DELETE /api/two-factor, GET/PUT /api/admin/ip-whitelist |
+| 更新面板 | /admin/update（版本检查 + 触发更新 + 回滚 + 远程提交日志 + 本地历史日志） | GET /api/admin/update/check, POST /trigger, POST /rollback, GET /history |
+
+> 后端 web API 路由层补全 8 路由：系统配置 2（GET /api/admin/config + PUT /api/admin/config/[key]）+ 用户管理 3（GET /api/admin/users + PATCH /[userId]/status + PATCH /[userId]/role）+ 超管专属 3（GET /api/admin/revenue + GET/PUT /api/admin/ip-whitelist）；service 新增 user-service.ts（listUsersForAdmin/changeUserStatus/changeUserRole）+ config-service.ts（listSystemConfigs/getSystemConfig/updateSystemConfig，与 epay-service.getEpayConfig 共享同一张 SystemConfig 表）；2FA/提现/工单/审计/更新 复用既有 M7/M8.2/M6/M0 路由，手写校验非 zod，路由层捕获 service 错误映射到现有错误码 PERMISSION_DENIED/PARAM_FORMAT/PARAM_MISSING/SYSTEM_ERROR；更新面板走 Better Auth getSession cookie 鉴权（非 X-User-Id/X-User-Role 头），http.ts 凭借 credentials:"include" 透传 Cookie 兼容。
+> 已知限制：User.ip_whitelist 字段被 2FA 复用存储加密备份码，2FA 开启时 getUserIpWhitelist() 返回空数组，前端在 2FA 开启时禁用 IP 白名单编辑并显示 warning，避免覆盖备份码。
 
 ---
 
@@ -562,3 +587,4 @@ src/
 | 1.1.0 | 2026-07-23 | **M8.0 Web 前端核心 UI 框架完成**：基础布局（src/app/globals.css 主题色变量：背景 #FFFFFF/#F8FAFC + 文字 #1E293B/#64748B + 主色藏蓝 #1E3A5F + 辅助色 accent-blue/green/amber + danger + border #E2E8F0 + @theme inline 映射 + 强制 color-scheme: light 禁暗黑 + focus-visible 主色细环 + 极简滚动条）/ 根 layout（src/app/layout.tsx：lang="zh-CN" + AuthProvider + ToastProvider 包裹 + metadata 标题"网络验证 SaaS 控制台"）/ UI 原子组件 7 个（components/ui/：Button 4 变体 primary/secondary/ghost/danger + 3 尺寸 sm/md/lg + loading spinner / Input + Textarea + Select label/error/hint / Card + CardHeader + CardBody + CardFooter / Badge 6 变体 default/primary/success/warning/danger/info / Table + THead/TBody/TR/TH/TD/EmptyRow 斑马纹 #F8FAFC hover / Modal ESC 关闭 + 滚动锁 + 3 尺寸 sm/md/lg + ConfirmModal danger 变体 / ToastProvider 4 语义色 info/success/warning/danger + 3s 自动消失 + 右上角 viewport + 进入动画）/ 鉴权基础设施（lib/auth-client.ts createAuthClient 单例 + SessionUser 类型含 role / lib/http.ts request<T> 统一封装注入 X-User-Id/X-User-Role 头 + 处理 {code,msg,data,ts,nonce} 响应 + code===0 返回 data + code===8408 触发 sessionExpiredHandler + ApiError 携带 code/msg + get/post/patch/del 便捷方法 + withQuery 查询参数拼接 / components/auth/auth-provider.tsx useSession 同步 + 注册会话过期回调 setUser(null) + window.location /login?reason=expired + refresh 通过 authClient.getSession({query:{disableCookieCache:true}}) 直接拉取最新会话（修复 refetch 返回 Promise<void> 无法获取数据的 bug）+ signOutAndRedirect / components/auth/auth-guard.tsx allow prop 角色路由隔离 + 未登录重定向 /login + 角色不匹配重定向 ROLE_HOME + loading spinner）/ 登录注册（src/app/(auth)/login/page.tsx + register/page.tsx：Better Auth signIn.email/signUp.email + 默认 developer 角色 + 密码 8 字符 + 确认密码校验 + useSearchParams Suspense 包裹修复 Next.js 16 静态预渲染要求 + ?reason=expired 显示会话过期提示）/ 三角色仪表盘（src/app/(dashboard)/dashboard/page.tsx 服务端 auth.api.getSession 重定向 + developer/agent/admin/page.tsx AuthGuard allow 角色守卫 + components/dashboard/role-dashboard.tsx 共用组件 GET /api/dashboard + DeveloperDashboard/AgentDashboard/SuperAdminDashboard 三个 render + StatCard/StatItem/PageHeader/CheckinCard 共享子组件）/ 工单 Web 闭环（src/app/(dashboard)/tickets/page.tsx 列表 status/category 筛选 + limit/offset 分页 20/页 + 工单号/标题/类型/优先级/状态/创建时间/操作表格 + EmptyRow 空态 + 上一页/下一页 + tickets/new/page.tsx 创建表单 title 1-100 + content 1-5000 + category bug/feature/billing/other + priority low/medium/high/urgent + 字符计数 hint + tickets/[ticketId]/page.tsx 详情工单信息卡 + StatusBadge/PriorityBadge/CategoryBadge + 回复列表 is_staff 高亮 primary-subtle + 回复表单 2000 字符限制 + closed 禁止回复 + 状态管理 ConfirmModal：客服标记已解决 resolved / 提交者关闭 closed，权限校验与后端 ticket-service 一致）/ 通知 Web 闭环（src/app/(dashboard)/notifications/page.tsx 列表 isRead 筛选 + 分页 + 6 种类型语义色 Badge + 未读项 primary-subtle 高亮 + 红点标记 + 单条标为已读 + 全部标记已读按钮 + 本地状态更新避免整页刷新）/ 签到 Web 闭环（src/app/(dashboard)/checkin/page.tsx 今日签到状态 Badge + 立即签到按钮已签到禁用 + 7 天奖励规则可视化网格 active/isToday 高亮 + 第 7 天封顶提示 + 最近 30 天签到记录 Table 日期/连续天数/奖励金额/签到时间 + EmptyState 空态）/ 共享组件（components/layout/page-header.tsx PageHeader + PageLoading + EmptyState / components/common/badges.tsx TicketStatus/Category/Priority + NotificationType 枚举 + StatusBadge/PriorityBadge/CategoryBadge + TICKET_STATUS_LABEL/CATEGORY_LABEL/PRIORITY_LABEL + NOTIFICATION_TYPE_LABEL + formatDateTime/formatDate）/ 顶栏 bug 修复（components/layout/topbar.tsx：unread-count API 返回 {count} 而非 {unread}，原代码 data?.unread 永远为 0，修复为 data?.count）；tsc 自检 0 errors；next build 验证通过（37/37 路由，新增 5 个静态页 /checkin /notifications /tickets /tickets/new /login + 1 个动态页 /tickets/[ticketId]，ƒ Proxy (Middleware) 识别正常，无 REDIS_HOST/BETTER_AUTH_SECRET 抛错）|
 | 1.2.0 | 2026-07-23 | **M8.1 开发者管理页完成 + 官网营销页**：官网营销页（src/app/page.tsx 重写为 client 营销页：Hero 区 + 8 项核心特性卡片 + 12 语言 SDK 展示 + 注册 CTA + 顶部登录态感知导航 useAuth 判断"进入控制台"/"登录/免费注册"）/ 后端 web API 路由层补全（apps/card-keys/devices/cloud-variables/shops/products/packages/user-packages/orders 共 30+ 路由 + service 补 listAppsByDeveloper/getAppById/disableApp/listCards/deleteCard/listDevices/getDeviceById/deleteVariable/getShop/deleteShop/deleteProduct/updatePackage/listAllOrders 13 个方法，手写校验非 zod 对标现有路由风格）/ M8.1 开发者 8 模块管理页（应用：列表状态筛选分页 / 创建 clientSecret+privateKey 仅显示一次 / 详情编辑版本/公告/心跳/设备上限/解绑规则 / 重签 / 停用；卡密：列表应用/状态筛选分页 / 批量生成 7 类型同步/异步 / 详情签名/校验位/水印 / 作废 / 加黑名单；设备：列表应用/状态筛选分页 / 详情机器码/心跳/序列号 / 加黑名单 / 解绑；云变量：应用选择 + 列表 + Modal 新增编辑 key/value/类型/公开 + 删除（http.ts 新增 put 方法）；APK 注入：任务列表状态筛选分页 / 上传 FormData 注入配置 / 详情 5s 轮询取消 / 下载 blob；接入中心：6 步流程向导 API 下发非硬编码 + 语言选择主流/社区分组 + 代码生成 baseUrl/appKey + 测试连接；店铺商品：店铺列表创建/编辑/删除 Modal + 店铺详情商品 CRUD 价格/库存/上下架；套餐充值：套餐列表卡片网格 + 订阅 ConfirmModal + 当前有效套餐剩余额度到期 + 订阅记录）/ sidebar 移除 developer comingSoon 标记；tsc 自检 0 errors；next build 验证通过（54/54 路由，新增 17 个开发者页面，ƒ Proxy (Middleware) 识别正常）|
 | 1.3.0 | 2026-07-23 | **M8.2 代理管理页完成**：后端 web API 路由层补全 18 路由（agent 自助 4 路由：GET /api/agent/profile|balance|subordinates|tree；提现 2 路由：GET+POST /api/withdrawals + GET /api/withdrawals/[id]；邀请码 3 路由：GET+POST /api/invitations + GET /api/invitations/[code] + GET /api/invitations/validate；超管 9 路由：GET /api/admin/agents + GET /[agentId] + PATCH /[agentId]/status + PATCH /[agentId]/commission-rate + GET /api/admin/withdrawals + POST /[id]/approve|reject|paid + GET /api/admin/invitations；service 补 listAllAgents/getAgentById/getWithdrawalById/listWithdrawalsWithTotal/listAllInvitations 5 个方法，手写校验非 zod，路由层捕获 service 错误映射到现有错误码 PERMISSION_DENIED/PARAM_FORMAT/PARAM_MISSING/SYSTEM_ERROR）/ M8.2 代理概览（4 余额卡片累计佣金/已提现/审核中/可提现 + 代理信息层级/佣金比例/状态 + 快捷入口，profile 为 null 时 EmptyState 提示联系上级开通代理身份）/ M8.2 下级代理（三层分段切换一级/二级/三级 + 每层表格邮箱/昵称/层级/佣金比例/累计佣金/状态 + 三层总数统计 + EmptyState 空态）/ M8.2 邀请码（列表 code 可复制 + 类型/使用模式/目标层级/已用上限/过期/状态 Badge + 创建 Modal type/targetLevel/usageMode/maxUses/expiresInDays 条件显示校验）/ M8.2 佣金明细（4 余额卡片 + 提现记录表格金额/状态/收款账户/申请审核打款时间/驳回原因 + 状态筛选分页 + 申请提现入口跳转）/ M8.2 提现申请（可提现余额卡片 + 提现记录表格 + 发起提现 Modal amount/payoutType alipay|wxpay|bank/account/name/bank 条件校验 + 1 元起校验）/ sidebar 移除 agent comingSoon 标记 + 注释更新 M8.2 已完成；tsc 自检 0 errors；next build 验证通过（59/59 路由，新增 5 个代理页面 + 18 个 API 路由，ƒ Proxy (Middleware) 识别正常）|
+| 1.4.0 | 2026-07-23 | **M8.3 超管管理页完成**：后端 web API 路由层补全 8 路由（系统配置 2：GET /api/admin/config 按 group 查询 + PUT /api/admin/config/[key] 更新；用户管理 3：GET /api/admin/users role/status/keyword/limit/offset 筛选分页 + PATCH /[userId]/status 封禁/解封 + PATCH /[userId]/role 角色变更；超管专属 3：GET /api/admin/revenue 收入汇总+最近支付 + GET/PUT /api/admin/ip-whitelist 全局+个人白名单；service 新增 user-service.ts listUsersForAdmin/changeUserStatus/changeUserRole + config-service.ts listSystemConfigs/getSystemConfig/updateSystemConfig，与 epay-service.getEpayConfig 共享同一张 SystemConfig 表；2FA/提现/工单/审计/更新 复用既有 M7/M8.2/M6/M0 路由，更新面板走 Better Auth getSession cookie 鉴权非 X-User-Id/X-User-Role 头，http.ts credentials:"include" 透传 Cookie 兼容）/ M8.3 超管仪表盘（5 卡片组：用户规模/业务规模/收入与提现/工单状态/APK 注入任务 + 6 子页快捷入口，formatYuan Decimal→2 位小数）/ M8.3 用户管理（role/status/keyword 筛选 + 分页 20/页 + ConfirmModal 封禁/解封 + Modal 角色变更 Select + 自我封禁/降级提示）/ M8.3 业务总览（业务规模/工单分布/APK 注入任务 3 卡片组 + 收入/工单入口）/ M8.3 收入明细（今日/本月/累计 3 卡片 + 最近支付表格 金额/方式/三方号/订单/用户/时间 + PAYMENT_METHOD_LABEL epay→彩虹易支付 映射）/ M8.3 提现审核（agentUserId/status 筛选 + 分页 + parsePayoutAccount JSON 安全解析 + 状态条件按钮：pending 通过/驳回 + approved 标记打款 + Reject Modal reason Textarea + Paid Modal tradeNo Input）/ M8.3 工单客服（status/category 筛选 + 分页 + 工单号/标题/状态/优先级/类型/提交人/时间/操作表格 + StatusBadge/PriorityBadge/CategoryBadge + 跳转 /tickets/[ticketId] 共享详情页）/ M8.3 系统配置（group 筛选 payment/storage/email/sms/cdn/backup/general + 表格 key/value/group/description/操作 + maskValue 加密配置 ****** 脱敏 + Edit Modal Textarea 加密配置不回填）/ M8.3 审计日志（action 20 选项/targetType 8 选项/userId 搜索 3 筛选 + PAGE_SIZE=50 + 表格 时间/用户/操作/对象/异常标记 + Detail Modal lg 全字段 + prettyJson details 美化 + is_abnormal danger Badge）/ M8.3 安全（2FA 状态卡 enabled/required/backupCodesRemaining + 两阶段开启 Modal accountName→secret/otpAuthUri/backupCodes + 关闭 Modal code 校验，DELETE 走 request() 直接传 body 修复 http.ts del 不支持 body；IP 白名单卡 全局只读 env + 个人 Textarea 一行一 IP，2FA 开启时显示字段冲突 warning 替换 textarea 防覆盖备份码）/ M8.3 更新面板（版本卡 currentVersion 截断 12 字符 + hasUpdate Badge + latestVersion 详情 + 触发更新按钮 !hasUpdate 禁用 + 回滚 window.confirm + 远程提交日志表 SHA/信息/作者/时间 + 本地历史表 时间/操作/状态/触发方式/操作人/版本/错误 + ACTION_LABEL/STATUS_LABEL/STATUS_VARIANT 映射）/ sidebar 移除全部 9 个 admin comingSoon 标记 + 注释更新 M8.3 已完成；tsc 自检 0 errors；next build 验证通过（36 静态页 + 82 API 路由，新增 9 个超管页面，ƒ Proxy (Middleware) 识别正常）|

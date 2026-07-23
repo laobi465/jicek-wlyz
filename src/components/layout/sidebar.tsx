@@ -12,9 +12,7 @@ import type { UserRole } from "@/lib/auth-client";
  * 角色专属入口：
  * - developer: 应用 / 卡密 / 设备 / 云变量 / APK 注入 / 接入中心 / 店铺 / 套餐（M8.1 已完成）
  * - agent: 下级代理 / 邀请码 / 佣金明细 / 提现申请（M8.2 已完成）
- * - super_admin: 用户管理 / 业务总览 / 收入 / 提现审核 / 系统配置 / 审计 / 更新（M8.3）
- *
- * M8.3 子页面尚未实现，先显示"敬请期待"占位（非假数据，仅文字提示）
+ * - super_admin: 用户管理 / 业务总览 / 收入 / 提现审核 / 工单客服 / 系统配置 / 审计 / 2FA / 更新（M8.3 已完成）
  */
 
 interface NavItem {
@@ -55,15 +53,15 @@ const AGENT_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "超管概览" },
-  { href: "/admin/users", label: "用户管理", comingSoon: true },
-  { href: "/admin/business", label: "业务总览", comingSoon: true },
-  { href: "/admin/revenue", label: "收入明细", comingSoon: true },
-  { href: "/admin/withdrawals", label: "提现审核", comingSoon: true },
-  { href: "/admin/tickets", label: "工单客服", comingSoon: true },
-  { href: "/admin/config", label: "系统配置", comingSoon: true },
-  { href: "/admin/audit-logs", label: "审计日志", comingSoon: true },
-  { href: "/admin/security", label: "2FA 与 IP 白名单", comingSoon: true },
-  { href: "/admin/update", label: "更新面板", comingSoon: true },
+  { href: "/admin/users", label: "用户管理" },
+  { href: "/admin/business", label: "业务总览" },
+  { href: "/admin/revenue", label: "收入明细" },
+  { href: "/admin/withdrawals", label: "提现审核" },
+  { href: "/admin/tickets", label: "工单客服" },
+  { href: "/admin/config", label: "系统配置" },
+  { href: "/admin/audit-logs", label: "审计日志" },
+  { href: "/admin/security", label: "2FA 与 IP 白名单" },
+  { href: "/admin/update", label: "更新面板" },
 ];
 
 const ROLE_NAV: Record<UserRole, NavItem[]> = {
