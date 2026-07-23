@@ -13,6 +13,7 @@ set -euo pipefail
 DEPLOY_DIR="/opt/jicek-wlyz"                       # 部署目录
 DEPLOY_INFO_FILE="/root/jicek-wlyz-deploy.txt"     # 部署信息保存位置
 COMPOSE_URL="https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/docker-compose.yml"
+INIT_SQL_URL="https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/init.sql"
 APP_IMAGE_DEFAULT="ghcr.io/laobi465/jicek-wlyz:latest"
 SCRIPT_URL="https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/deploy/install.sh"
 REPO_URL="https://github.com/laobi465/jicek-wlyz.git"
@@ -134,32 +135,6 @@ wait_for_app_healthy() {
     info "应用健康检查通过"
 }
 
-# 创建数据库表结构（用 migrate 专用镜像执行 prisma db push）
-# 前置条件：db 容器已启动且健康；migrate 镜像已构建
-# 为什么用 migrate 镜像而非 app 镜像：app 是 Next.js standalone 精简镜像，
-# 缺 prisma CLI 的传递依赖（effect 等），npx prisma 会报 Cannot find module 'effect'
-create_db_schema() {
-    info "创建数据库表结构（prisma db push）..."
-    # 用 migrate 专用镜像（含完整 node_modules）通过 --profile migrate 运行
-    # 捕获完整输出到日志文件——docker compose logs 看不到 run --rm 已删除容器的输出
-    local schema_log="/tmp/jicek-schema.log"
-    if docker compose --profile migrate run --rm migrate \
-        > "${schema_log}" 2>&1; then
-        info "数据库表结构创建成功"
-        tail -3 "${schema_log}"
-    else
-        local rc=$?
-        error "数据库表结构创建失败（退出码 ${rc}），prisma 完整输出："
-        echo "----------------------------------------"
-        cat "${schema_log}"
-        echo "----------------------------------------"
-        echo
-        echo "db/redis 容器最近日志："
-        dump_logs
-        exit 1
-    fi
-}
-
 # ============================================================================
 # 环境准备函数
 # ============================================================================
@@ -272,40 +247,32 @@ EOF
     info ".env 已生成：${DEPLOY_DIR}/.env"
 }
 
-# 6. 下载 docker-compose.yml
+# 6. 下载 docker-compose.yml + init.sql（建表 SQL，db 容器首次启动自动执行）
 download_compose() {
-    step "6" "下载 docker-compose.yml..."
+    step "6" "下载编排文件与建表 SQL..."
     curl -fsSL "${COMPOSE_URL}" -o "${DEPLOY_DIR}/docker-compose.yml"
-    info "docker-compose.yml 已下载至 ${DEPLOY_DIR}/docker-compose.yml"
+    curl -fsSL "${INIT_SQL_URL}" -o "${DEPLOY_DIR}/init.sql"
+    info "docker-compose.yml + init.sql 已下载至 ${DEPLOY_DIR}"
 }
 
 # 7. 准备镜像（远程拉取优先，失败回退本地构建）
+# 建表已由 init.sql + db 容器 docker-entrypoint-initdb.d 机制处理，无需 migrate 镜像
 prepare_image() {
     step "7" "准备应用镜像..."
     cd "${DEPLOY_DIR}"
 
-    # migrate 镜像不在 registry，必须本地构建，需要 Dockerfile + 源码在场
-    # 无论远程拉取还是本地构建，都先确保源码就绪
-    prepare_local_build_source
-
     if docker compose pull app 2>/dev/null; then
         info "远程 app 镜像拉取成功"
         docker compose pull db redis apk-injector 2>/dev/null || true
-        # migrate 镜像含完整 node_modules 供 prisma CLI 用，必须本地构建
-        info "构建 migrate 建表镜像（含完整依赖）..."
-        docker compose --profile migrate build migrate || { error "migrate 镜像构建失败"; exit 1; }
         return 0
     fi
 
-    # 远程镜像不可用 → 回退到本地构建模式
+    # 远程镜像不可用 → 回退到本地构建模式（需下载源码）
     warn "远程镜像不可用（可能 CI 尚未构建），切换到本地构建模式..."
-    info "开始本地构建 app + migrate 镜像..."
+    prepare_local_build_source
+    info "开始本地构建 app 镜像..."
     if ! docker compose build app; then
         error "app 镜像本地构建失败"
-        exit 1
-    fi
-    if ! docker compose --profile migrate build migrate; then
-        error "migrate 镜像本地构建失败"
         exit 1
     fi
     info "镜像构建完成"
@@ -336,23 +303,11 @@ prepare_local_build_source() {
     rm -rf /tmp/jicek-wlyz-build
 }
 
-# 8. 启动服务（分步：数据层 → 建表 → 应用层）
+# 8. 启动服务（db 首次启动自动执行 init.sql 建表，compose 编排处理依赖）
 start_services() {
     step "8" "启动服务..."
-
-    # 8.1 先启动数据层
-    info "启动数据库与 Redis..."
-    docker compose up -d db redis
-
-    # 8.2 等待数据库就绪
-    wait_for_db_healthy
-
-    # 8.3 创建数据库表结构（自动建表，恢复一键体验）
-    create_db_schema
-
-    # 8.4 启动应用层（表已存在，init-admin 会成功创建默认超管）
-    info "启动应用与 APK 注入容器..."
-    docker compose up -d app apk-injector
+    info "启动全部服务（db 首次启动会自动执行 init.sql 建表）..."
+    docker compose up -d
 }
 
 # 9. 输出并保存部署信息
@@ -463,25 +418,18 @@ cmd_update() {
         prepare_local_build_source
         docker compose build app || { error "app 构建失败"; exit 1; }
     fi
-    # migrate 镜像必须本地构建（含完整 node_modules 供 prisma CLI 用）
-    info "构建 migrate 建表镜像..."
-    docker compose --profile migrate build migrate || { error "migrate 构建失败"; exit 1; }
+    # 重新下载编排文件与建表 SQL（保持与最新版本一致）
+    download_compose
 
-    step "2" "重启数据层..."
-    docker compose up -d db redis
-    wait_for_db_healthy
-
-    step "3" "同步数据库表结构..."
-    create_db_schema
-
-    step "4" "重启应用..."
-    docker compose up -d app apk-injector
+    step "2" "重启全部服务..."
+    docker compose up -d
     # 读取当前 APP_PORT（.env 可能被用户修改过）
     APP_PORT="$(grep '^APP_PORT=' "${DEPLOY_DIR}/.env" | cut -d= -f2)"
     wait_for_app_healthy || exit 1
 
     echo
     info "更新完成！应用已运行在端口 ${APP_PORT}"
+    warn "提示：init.sql 仅在数据库首次初始化时执行，若 schema 有变更需手动处理增量 SQL"
 }
 
 # ============================================================================

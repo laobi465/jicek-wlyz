@@ -56,6 +56,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-jicek_wlyz}
     volumes:
       - db-data:/var/lib/postgresql/data
+      # 首次初始化时自动执行建表 SQL（PostgreSQL 官方机制，仅数据卷为空时执行一次）
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${DB_NAME:-jicek_wlyz}"]
       interval: 10s
@@ -103,26 +105,6 @@ services:
         chmod +x /usr/local/bin/apktool
         echo "apktool 已就绪，容器保持运行以供 docker exec 调用"
         tail -f /dev/null
-    networks:
-      - jicek-net
-
-  # ---------- 建表专用镜像（仅 install.sh/update 通过 --profile migrate 调用）----------
-  # 含完整 node_modules（prisma CLI 及其传递依赖 effect 等齐全），runner standalone 镜像缺这些依赖
-  # 正常 docker compose up 不会启动此服务（profiles 隔离）
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: migrate
-    image: jicek-wlyz-migrate:latest
-    container_name: jicek-wlyz-migrate
-    profiles: ["migrate"]
-    environment:
-      # 容器内部通过服务名访问 db，使用容器内部默认端口
-      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/${DB_NAME:-jicek_wlyz}?schema=public
-    depends_on:
-      db:
-        condition: service_healthy
     networks:
       - jicek-net
 

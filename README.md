@@ -57,7 +57,7 @@ bash <(curl -sSL https://raw.githubusercontent.com/laobi465/jicek-wlyz/main/depl
 4. 端口冲突检测（占用自动 +1）：宝塔端口 / 项目端口 / 数据库端口 / Redis 端口
 5. 随机生成数据库密码、Redis 密码、Better Auth Secret、字段加密密钥（`openssl rand`）
 6. 拉取预构建 Docker 镜像（不可用时回退本地构建）
-7. **分步启动**：先启动 db + redis → 等待 db 就绪 → 自动执行 `prisma db push` 建表 → 启动 app（init-admin 创建默认超管）
+7. **一键启动**：`docker compose up -d` 启动全部服务——db 容器首次启动自动执行 `init.sql` 建表（PostgreSQL docker-entrypoint-initdb.d 机制），app 容器启动时 init-admin 创建默认超管 admin@example.com/admin123
 8. 等待应用健康检查通过（失败自动打印容器日志便于排查）
 9. 输出配置信息并保存至 `/root/jicek-wlyz-deploy.txt`
 
@@ -120,6 +120,7 @@ cp .env.example .env
 npm run db:generate
 
 # 创建数据库表（手动部署需执行一次；后续表结构变更用 npm run db:migrate）
+# 生产 Docker 部署时由 db 容器自动执行 deploy/init.sql 建表，无需手动运行
 npm run db:push
 
 # 开发模式启动
