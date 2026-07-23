@@ -23,7 +23,10 @@ datasource db {
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
-  password_hash String   @map("password_hash")
+  /// 密码 hash（兼容字段，实际密码存 Account.password；可空以兼容 Better Auth signUpEmail 流程）
+  password_hash String?  @map("password_hash")
+  /// 邮箱是否已验证（Better Auth 要求字段，当前未启用邮件验证，恒为 false）
+  email_verified Boolean @default(false) @map("email_verified")
   nickname      String?
   phone         String?  // 加密存储
   real_name     String?  @map("real_name") // 加密存储
@@ -104,6 +107,8 @@ model Account {
   user_id           String   @map("user_id")
   provider          String
   provider_account_id String @map("provider_account_id")
+  /// 密码 hash（仅 provider=credential 时使用，Better Auth 邮箱密码模式要求）
+  password          String?  @map("password")
   access_token      String?  @map("access_token")
   refresh_token     String?  @map("refresh_token")
   expires_at        Int?     @map("expires_at")

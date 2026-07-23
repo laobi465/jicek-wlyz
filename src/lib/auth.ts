@@ -1,6 +1,5 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { admin } from 'better-auth/plugins/admin';
 import { toNextJsHandler } from 'better-auth/next-js';
 import { prisma } from '@/lib/db';
 import type { UserRole } from '@/types/auth';
@@ -47,6 +46,13 @@ function createAuth(): AuthInstance {
    * - 邮箱密码认证
    * - 三角色 RBAC：super_admin / agent / developer
    * - Session 策略：7 天过期，每 1 天刷新一次
+   *
+   * 设计说明：
+   * 不使用 admin 插件。admin 插件的 adminRoles 已被官方弃用，要求改用
+   * access control + roles 对象（带 newRole），权限模型过重。
+   * 本系统的超管鉴权全部走自研 /api/admin/* 路由（X-User-Role 头校验），
+   * Better Auth 仅负责邮箱密码注册/登录/session，role 字段通过
+   * user.additionalFields 声明（注册时默认 developer，由 setup/超管修改）。
    */
   return betterAuth({
     secret: betterAuthSecret,
@@ -57,20 +63,54 @@ function createAuth(): AuthInstance {
     emailAndPassword: {
       enabled: true,
     },
+    // 用户模型字段映射：Better Auth 内部 camelCase → schema snake_case
+    user: {
+      fields: {
+        name: 'nickname',
+        emailVerified: 'email_verified',
+        image: 'avatar',
+        passwordHash: 'password_hash',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      },
+      // 额外字段：声明 role 字段，注册时默认 developer
+      // Better Auth 会在 create User 时写入此字段（schema 已有 @default("developer")）
+      additionalFields: {
+        role: {
+          type: 'string',
+          defaultValue: 'developer' satisfies UserRole,
+          input: false, // 不允许客户端注册时自行设置 role（防提权）
+        },
+      },
+    },
+    // 会话模型字段映射
     session: {
       // 会话过期时间：7 天（单位：秒）
       expiresIn: 60 * 60 * 24 * 7,
       // 会话刷新周期：1 天（单位：秒）
       updateAge: 60 * 60 * 24,
+      fields: {
+        userId: 'user_id',
+        expiresAt: 'expires_at',
+        ipAddress: 'ip_address',
+        userAgent: 'user_agent',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      },
     },
-    plugins: [
-      admin({
-        // 新注册用户默认角色为开发者
-        defaultRole: 'developer' satisfies UserRole,
-        // 仅超管为管理角色，可访问 admin 接口；agent / developer 为普通角色
-        adminRoles: ['super_admin'],
-      }),
-    ],
+    // Account 模型字段映射
+    account: {
+      fields: {
+        userId: 'user_id',
+        providerId: 'provider',
+        accountId: 'provider_account_id',
+        accessToken: 'access_token',
+        refreshToken: 'refresh_token',
+        accessTokenExpiresAt: 'expires_at',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      },
+    },
   }) as AuthInstance;
 }
 
