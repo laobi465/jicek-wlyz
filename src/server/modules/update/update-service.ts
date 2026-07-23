@@ -342,6 +342,21 @@ function isGitAvailable(): boolean {
 }
 
 /**
+ * 获取当前部署模式
+ *
+ * - 'source': 源码部署（存在 .git 目录），后台"触发更新"按钮可用，
+ *   走 git pull → npm install → prisma migrate → docker compose restart 流程
+ * - 'docker': Docker standalone 部署（镜像内无 git / 无 .git），容器内无法
+ *   执行 git pull，后台"触发更新"按钮不可用，需在宿主机执行 install.sh update
+ *
+ * check 接口返回此标识，前端据此切换 UI：docker 模式展示"宿主机更新指引"
+ * 卡片（含可一键复制的命令 + 版本对比），source 模式展示"触发更新"按钮。
+ */
+export function getDeployMode(): 'source' | 'docker' {
+  return isGitAvailable() ? 'source' : 'docker';
+}
+
+/**
  * 安全执行 shell 命令
  *
  * 所有命令均为常量字符串，不拼接任何外部输入，从源头杜绝命令注入。

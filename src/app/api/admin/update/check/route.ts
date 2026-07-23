@@ -2,6 +2,7 @@ import {
   checkLatestVersion,
   getUpdateLogs,
   getCurrentVersion,
+  getDeployMode,
   createSuccessResponse,
   createErrorResponse,
 } from '@/server/modules/update/update-service';
@@ -54,11 +55,16 @@ export async function GET(request: Request): Promise<Response> {
     // 3. 比较版本：本地 SHA 与远端最新 SHA 不一致即视为有更新
     const hasUpdate = currentVersion !== latestVersion.sha;
 
+    // 4. 部署模式：docker 模式下容器内无法 git pull，前端据此切换为
+    //    "宿主机更新指引"卡片（含可一键复制的命令），source 模式展示"触发更新"按钮
+    const isDockerMode = getDeployMode() === 'docker';
+
     return createSuccessResponse({
       currentVersion,
       latestVersion,
       updateLogs,
       hasUpdate,
+      isDockerMode,
     });
   } catch (error) {
     const code = (error as { code?: number }).code ?? ERROR_CODE_INTERNAL;
